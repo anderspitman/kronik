@@ -1,5 +1,5 @@
 # Install
-BIN = hedge
+BIN = kronik
 BUILD_DIR = build
 BIN_PATH = $(BUILD_DIR)/$(BIN)
 

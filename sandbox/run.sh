@@ -4,4 +4,4 @@ podman run --rm -it \
     --name ${container_name} \
     -v $PWD:/mnt/${container_name} \
     $@ \
-    hedge
+    kronik

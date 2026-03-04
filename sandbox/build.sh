@@ -1,1 +1,1 @@
-podman build -t hedge .
+podman build -t kronik .
