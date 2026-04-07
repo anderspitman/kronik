@@ -40,6 +40,37 @@ input {
   padding: 24px 0 64px;
 }
 
+.status-bar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 252, 246, 0.74);
+  box-shadow: 0 10px 28px rgba(74, 37, 12, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.status-line {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+  color: var(--muted);
+}
+
+.status-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   text-transform: uppercase;
@@ -55,7 +86,11 @@ h3,
 }
 
 #status-text {
-  font-size: 1rem;
+  min-width: 0;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .panel {
@@ -87,18 +122,71 @@ h3,
   color: var(--muted);
 }
 
-.panel-note + .panel-note {
-  margin-top: 10px;
-}
-
 .config-grid,
 .project-form {
   display: grid;
   gap: 14px;
 }
 
+.config-menu {
+  position: relative;
+  z-index: 21;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 251, 245, 0.72);
+  overflow: visible;
+}
+
+.config-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.config-summary::-webkit-details-marker {
+  display: none;
+}
+
+.config-summary-text,
+.config-summary-action {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.config-menu[open] {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 .config-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 18px;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 10;
+  width: min(760px, calc(100vw - 48px));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 251, 245, 0.97);
+  box-shadow: var(--shadow);
+}
+
+.config-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.status-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .project-form {
@@ -215,6 +303,27 @@ button:disabled {
   .config-grid,
   .project-form {
     grid-template-columns: 1fr;
+  }
+
+  .status-bar,
+  .status-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  #status-text,
+  .config-summary-text {
+    white-space: normal;
+  }
+
+  .config-menu,
+  .config-grid {
+    width: 100%;
+  }
+
+  .config-grid {
+    left: 0;
+    right: auto;
   }
 
   .panel-header,

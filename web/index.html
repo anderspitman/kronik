@@ -8,38 +8,38 @@
 </head>
 <body>
   <main class="app-shell">
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Kronik</p>
-          <h2>WebDAV Settings</h2>
-        </div>
+    <header class="status-bar">
+      <p class="status-line">
+        <span class="status-label">Connection</span>
+        <span id="status-text">Connect to a WebDAV directory to begin.</span>
+      </p>
+      <div class="status-actions">
         <button id="load-button" class="primary">Load data</button>
+        <span id="config-summary-text" class="config-summary-text">No server saved.</span>
       </div>
-      <p class="panel-note">
-        <strong>Status:</strong> <span id="status-text">Connect to a WebDAV directory to begin.</span>
-      </p>
-      <form id="config-form" class="config-grid" autocomplete="off">
-        <label>
-          <span>Base URL</span>
-          <input id="webdav-url" name="webdav-url" type="url" placeholder="https://dav.example.com/kronik" required>
-        </label>
-        <label>
-          <span>Username</span>
-          <input id="webdav-user" name="webdav-user" type="text" placeholder="Optional">
-        </label>
-        <label>
-          <span>Password</span>
-          <input id="webdav-password" name="webdav-password" type="password" placeholder="Optional">
-        </label>
-      </form>
-      <p class="panel-note">
-        Your browser must be allowed to `GET` and `PUT` these TSV files by the WebDAV server’s CORS policy.
-      </p>
-      <p id="sync-details" class="panel-note">
-        Expected files: projects.tsv and times.tsv inside a WebDAV directory.
-      </p>
-    </section>
+      <details id="config-menu" class="config-menu">
+        <summary class="config-summary">
+          <span class="config-summary-action">Server</span>
+        </summary>
+        <form id="config-form" class="config-grid" autocomplete="off">
+          <label>
+            <span>Base URL</span>
+            <input id="webdav-url" name="webdav-url" type="url" placeholder="https://dav.example.com/kronik" required>
+          </label>
+          <label>
+            <span>Username</span>
+            <input id="webdav-user" name="webdav-user" type="text" placeholder="Optional">
+          </label>
+          <label>
+            <span>Password</span>
+            <input id="webdav-password" name="webdav-password" type="password" placeholder="Optional">
+          </label>
+          <div class="config-actions">
+            <button id="clear-config-button" type="button">Forget saved login</button>
+          </div>
+        </form>
+      </details>
+    </header>
 
     <section class="panel">
       <div class="panel-header">

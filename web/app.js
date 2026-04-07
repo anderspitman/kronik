@@ -19,7 +19,6 @@ const state = {
 
 const statusText = document.querySelector("#status-text");
 const todayLabel = document.querySelector("#today-label");
-const syncDetails = document.querySelector("#sync-details");
 const projectsEmpty = document.querySelector("#projects-empty");
 const projectsList = document.querySelector("#projects-list");
 const projectTemplate = document.querySelector("#project-template");
@@ -28,12 +27,16 @@ const saveButton = document.querySelector("#save-button");
 const projectForm = document.querySelector("#project-form");
 const projectNameInput = document.querySelector("#project-name");
 const configForm = document.querySelector("#config-form");
+const configMenu = document.querySelector("#config-menu");
+const configSummaryText = document.querySelector("#config-summary-text");
 const webdavUrlInput = document.querySelector("#webdav-url");
 const webdavUserInput = document.querySelector("#webdav-user");
 const webdavPasswordInput = document.querySelector("#webdav-password");
+const clearConfigButton = document.querySelector("#clear-config-button");
 
 hydrateConfigForm();
 render();
+void maybeAutoLoad();
 
 window.addEventListener("beforeunload", (event) => {
   if (!state.dirty) {
@@ -89,6 +92,10 @@ configForm.addEventListener("input", () => {
   render();
 });
 
+clearConfigButton.addEventListener("click", () => {
+  clearStoredConfig();
+});
+
 projectsList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-action]");
   const card = event.target.closest("[data-project-id]");
@@ -106,6 +113,14 @@ projectsList.addEventListener("click", (event) => {
   delta = Number(button.dataset.delta || "0");
   updateTodayBlocks(Number(card.dataset.projectId), delta);
 });
+
+async function maybeAutoLoad() {
+  if (!hasStoredConnection()) {
+    return;
+  }
+
+  await loadRemoteState();
+}
 
 function loadConfig() {
   try {
@@ -150,6 +165,19 @@ function syncConfigFromForm() {
   };
 
   window.localStorage.setItem(CONFIG_KEY, JSON.stringify(state.config));
+}
+
+function clearStoredConfig() {
+  state.config = defaultConfig();
+  window.localStorage.removeItem(CONFIG_KEY);
+  hydrateConfigForm();
+  configMenu.open = false;
+  setStatus("Saved WebDAV connection cleared.");
+  render();
+}
+
+function hasStoredConnection() {
+  return Boolean(state.config.baseUrl && (state.config.password || state.config.username));
 }
 
 function authHeaders() {
@@ -505,7 +533,7 @@ function render() {
 
   projectsEmpty.classList.toggle("is-hidden", sortedProjects.length > 0);
   todayLabel.textContent = state.loaded ? state.today : "No data loaded";
-  syncDetails.textContent = buildSyncDetails();
+  configSummaryText.textContent = buildConfigSummary();
   projectNameInput.disabled = !state.loaded || state.busy;
   loadButton.textContent = state.loaded ? "Reload data" : "Load data";
   saveButton.disabled =
@@ -516,30 +544,16 @@ function render() {
   saveButton.textContent = state.saving ? "Saving..." : "Save now";
 }
 
-function buildSyncDetails() {
-  if (!state.loaded) {
-    return "Expected files: projects.tsv and times.tsv inside a WebDAV directory.";
+function buildConfigSummary() {
+  if (!state.config.baseUrl) {
+    return "No server saved.";
   }
 
-  const parts = [`Last load: ${state.remote.loadedAt || "unknown"}`];
-
-  if (state.remote.projectsMissing || state.remote.timesMissing) {
-    parts.push("Missing TSV files will be created on first save.");
+  if (!state.config.username) {
+    return `${state.config.baseUrl} without login credentials saved.`;
   }
 
-  if (state.saving) {
-    parts.push("Save in progress.");
-  }
-
-  if (state.pendingSave) {
-    parts.push("Another save is queued.");
-  }
-
-  if (state.dirty) {
-    parts.push(state.saving ? "Unsaved edits are queued." : "Local changes pending upload.");
-  }
-
-  return parts.join(" ");
+  return `${state.config.baseUrl} as ${state.config.username}.`;
 }
 
 function markDirty(message) {
