@@ -1,0 +1,235 @@
+:root {
+  color-scheme: light;
+  --bg: #f6efe4;
+  --panel: rgba(255, 252, 246, 0.86);
+  --panel-strong: #fffaf1;
+  --line: rgba(86, 58, 32, 0.14);
+  --text: #24170d;
+  --muted: #785f4a;
+  --accent: #ba4a22;
+  --accent-dark: #8e3412;
+  --shadow: 0 24px 60px rgba(74, 37, 12, 0.12);
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Georgia", "Times New Roman", serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(186, 74, 34, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(137, 170, 115, 0.2), transparent 26%),
+    linear-gradient(180deg, #f7f0e5 0%, #efe3d1 100%);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app-shell {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 24px 0 64px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+h2,
+h3,
+.today-total {
+  font-family: "Trebuchet MS", "Gill Sans", sans-serif;
+}
+
+#status-text {
+  font-size: 1rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+  padding: 28px;
+  margin-bottom: 24px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.today-label,
+.panel-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.panel-note + .panel-note {
+  margin-top: 10px;
+}
+
+.config-grid,
+.project-form {
+  display: grid;
+  gap: 14px;
+}
+
+.config-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.project-form {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  margin-bottom: 20px;
+}
+
+label span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 14px 16px;
+  color: var(--text);
+}
+
+button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-strong);
+  color: var(--text);
+  cursor: pointer;
+  padding: 12px 18px;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(186, 74, 34, 0.45);
+}
+
+button.primary {
+  background: linear-gradient(180deg, var(--accent), var(--accent-dark));
+  border-color: transparent;
+  color: #fff8f1;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.projects-list {
+  display: grid;
+  gap: 16px;
+}
+
+.project-card {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 251, 245, 0.92);
+}
+
+.project-main,
+.project-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.project-footer {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.project-name {
+  margin: 0 0 6px;
+  font-size: 1.25rem;
+}
+
+.project-meta {
+  margin: 0;
+  color: var(--muted);
+}
+
+.project-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.today-total {
+  min-width: 92px;
+  text-align: center;
+  font-size: 1.6rem;
+}
+
+.empty-state {
+  padding: 28px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  text-align: center;
+}
+
+.is-hidden {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .config-grid,
+  .project-form {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-header,
+  .project-main,
+  .project-footer {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .project-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  button {
+    width: 100%;
+  }
+}

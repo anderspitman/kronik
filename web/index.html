@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kronik</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Kronik</p>
+          <h2>WebDAV Settings</h2>
+        </div>
+        <button id="load-button" class="primary">Load data</button>
+      </div>
+      <p class="panel-note">
+        <strong>Status:</strong> <span id="status-text">Connect to a WebDAV directory to begin.</span>
+      </p>
+      <form id="config-form" class="config-grid" autocomplete="off">
+        <label>
+          <span>Base URL</span>
+          <input id="webdav-url" name="webdav-url" type="url" placeholder="https://dav.example.com/kronik" required>
+        </label>
+        <label>
+          <span>Username</span>
+          <input id="webdav-user" name="webdav-user" type="text" placeholder="Optional">
+        </label>
+        <label>
+          <span>Password</span>
+          <input id="webdav-password" name="webdav-password" type="password" placeholder="Optional">
+        </label>
+      </form>
+      <p class="panel-note">
+        Your browser must be allowed to `GET` and `PUT` these TSV files by the WebDAV server’s CORS policy.
+      </p>
+      <p id="sync-details" class="panel-note">
+        Expected files: projects.tsv and times.tsv inside a WebDAV directory.
+      </p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Projects</p>
+          <h2>Today</h2>
+        </div>
+        <p id="today-label" class="today-label">No data loaded</p>
+      </div>
+      <form id="project-form" class="project-form" autocomplete="off">
+        <input id="project-name" name="project-name" type="text" maxlength="64" placeholder="Add a new project" required>
+        <button type="submit" class="primary">Add project</button>
+        <button id="save-button" type="button">Save all changes</button>
+      </form>
+      <div id="projects-empty" class="empty-state">No projects yet.</div>
+      <div id="projects-list" class="projects-list"></div>
+    </section>
+  </main>
+
+  <template id="project-template">
+    <article class="project-card">
+      <div class="project-main">
+        <div>
+          <h3 class="project-name"></h3>
+          <p class="project-meta"></p>
+        </div>
+        <div class="project-actions">
+          <button class="decrement" type="button">-15m</button>
+          <div class="today-total"></div>
+          <button class="increment" type="button">+15m</button>
+        </div>
+      </div>
+      <div class="project-footer">
+        <span class="project-total"></span>
+        <span class="project-modified"></span>
+      </div>
+    </article>
+  </template>
+
+  <script src="./app.js"></script>
+</body>
+</html>
