@@ -333,6 +333,123 @@ button:disabled {
   font-size: 0.95rem;
 }
 
+.project-history {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.project-history-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.project-history-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.project-history-range {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.project-history-chart {
+  width: 100%;
+  height: 96px;
+  overflow: hidden;
+}
+
+.project-history-chart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.project-history-axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.project-history-gridline {
+  stroke: var(--line);
+  stroke-dasharray: 3 4;
+  stroke-width: 1;
+}
+
+.project-history-axis-tick {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.project-history-axis-label {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.project-history-bar {
+  fill: var(--accent);
+  opacity: 0.72;
+  transition: opacity 140ms ease;
+  cursor: default;
+}
+
+.project-history-chart:hover .project-history-bar {
+  opacity: 0.4;
+}
+
+.project-history-chart .project-history-bar:hover {
+  opacity: 1;
+}
+
+.project-history-bar.is-today {
+  fill: var(--accent-dark);
+  opacity: 1;
+}
+
+.project-history-bar.is-zero {
+  fill: var(--line);
+  opacity: 1;
+}
+
+.chart-tooltip {
+  position: fixed;
+  z-index: 60;
+  left: 0;
+  top: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-strong);
+  box-shadow: var(--status-shadow);
+  color: var(--text);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+.chart-tooltip.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.chart-tooltip-date {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.chart-tooltip-value {
+  margin-top: 2px;
+  font-family: "Trebuchet MS", "Gill Sans", sans-serif;
+  font-size: 1rem;
+}
+
 .project-name {
   margin: 0 0 6px;
   font-size: 1.25rem;
@@ -397,6 +514,11 @@ button:disabled {
   .panel-header,
   .project-main,
   .project-footer {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .project-history-header {
     align-items: start;
     flex-direction: column;
   }

@@ -72,6 +72,11 @@
     </section>
   </main>
 
+  <div id="chart-tooltip" class="chart-tooltip" aria-hidden="true">
+    <div id="chart-tooltip-date" class="chart-tooltip-date"></div>
+    <div id="chart-tooltip-value" class="chart-tooltip-value"></div>
+  </div>
+
   <template id="project-template">
     <article class="project-card">
       <div class="project-main">
@@ -88,6 +93,13 @@
       <div class="project-footer">
         <span class="project-total"></span>
         <span class="project-modified"></span>
+      </div>
+      <div class="project-history">
+        <div class="project-history-header">
+          <span class="project-history-label">Daily hours</span>
+          <span class="project-history-range"></span>
+        </div>
+        <div class="project-history-chart"></div>
       </div>
     </article>
   </template>
