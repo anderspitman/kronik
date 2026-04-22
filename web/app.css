@@ -1,17 +1,85 @@
-:root {
+:root,
+:root[data-theme="light"] {
   color-scheme: light;
+  --bg-glow-left: rgba(186, 74, 34, 0.18);
+  --bg-glow-right: rgba(137, 170, 115, 0.2);
+  --bg-start: #f7f0e5;
+  --bg-end: #efe3d1;
   --bg: #f6efe4;
   --panel: rgba(255, 252, 246, 0.86);
   --panel-strong: #fffaf1;
+  --panel-soft: rgba(255, 251, 245, 0.92);
+  --status-surface: rgba(255, 252, 246, 0.74);
+  --menu-surface: rgba(255, 251, 245, 0.72);
+  --menu-panel: rgba(255, 251, 245, 0.97);
+  --input-bg: rgba(255, 255, 255, 0.82);
   --line: rgba(86, 58, 32, 0.14);
   --text: #24170d;
   --muted: #785f4a;
   --accent: #ba4a22;
   --accent-dark: #8e3412;
+  --accent-contrast: #fff8f1;
+  --status-error: #8e3412;
+  --button-hover-line: rgba(186, 74, 34, 0.45);
   --shadow: 0 24px 60px rgba(74, 37, 12, 0.12);
+  --status-shadow: 0 10px 28px rgba(74, 37, 12, 0.08);
   --radius-lg: 24px;
   --radius-md: 16px;
   --radius-sm: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg-glow-left: rgba(217, 109, 61, 0.22);
+    --bg-glow-right: rgba(107, 168, 132, 0.18);
+    --bg-start: #17100d;
+    --bg-end: #0e0b09;
+    --bg: #120e0c;
+    --panel: rgba(32, 24, 21, 0.88);
+    --panel-strong: #2d221d;
+    --panel-soft: rgba(38, 29, 25, 0.94);
+    --status-surface: rgba(23, 18, 15, 0.8);
+    --menu-surface: rgba(31, 24, 20, 0.82);
+    --menu-panel: rgba(29, 22, 19, 0.96);
+    --input-bg: rgba(18, 14, 12, 0.92);
+    --line: rgba(246, 232, 216, 0.14);
+    --text: #f5eadf;
+    --muted: #ccb6a3;
+    --accent: #d96d3d;
+    --accent-dark: #b95224;
+    --accent-contrast: #fff3ea;
+    --status-error: #ff9a73;
+    --button-hover-line: rgba(217, 109, 61, 0.55);
+    --shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+    --status-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-glow-left: rgba(217, 109, 61, 0.22);
+  --bg-glow-right: rgba(107, 168, 132, 0.18);
+  --bg-start: #17100d;
+  --bg-end: #0e0b09;
+  --bg: #120e0c;
+  --panel: rgba(32, 24, 21, 0.88);
+  --panel-strong: #2d221d;
+  --panel-soft: rgba(38, 29, 25, 0.94);
+  --status-surface: rgba(23, 18, 15, 0.8);
+  --menu-surface: rgba(31, 24, 20, 0.82);
+  --menu-panel: rgba(29, 22, 19, 0.96);
+  --input-bg: rgba(18, 14, 12, 0.92);
+  --line: rgba(246, 232, 216, 0.14);
+  --text: #f5eadf;
+  --muted: #ccb6a3;
+  --accent: #d96d3d;
+  --accent-dark: #b95224;
+  --accent-contrast: #fff3ea;
+  --status-error: #ff9a73;
+  --button-hover-line: rgba(217, 109, 61, 0.55);
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+  --status-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
 }
 
 * {
@@ -24,9 +92,9 @@ body {
   font-family: "Georgia", "Times New Roman", serif;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(186, 74, 34, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(137, 170, 115, 0.2), transparent 26%),
-    linear-gradient(180deg, #f7f0e5 0%, #efe3d1 100%);
+    radial-gradient(circle at top left, var(--bg-glow-left), transparent 28%),
+    radial-gradient(circle at top right, var(--bg-glow-right), transparent 26%),
+    linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
 }
 
 button,
@@ -50,8 +118,8 @@ input {
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 252, 246, 0.74);
-  box-shadow: 0 10px 28px rgba(74, 37, 12, 0.08);
+  background: var(--status-surface);
+  box-shadow: var(--status-shadow);
   backdrop-filter: blur(10px);
 }
 
@@ -133,7 +201,7 @@ h3,
   z-index: 21;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(255, 251, 245, 0.72);
+  background: var(--menu-surface);
   overflow: visible;
 }
 
@@ -172,7 +240,7 @@ h3,
   width: min(760px, calc(100vw - 48px));
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(255, 251, 245, 0.97);
+  background: var(--menu-panel);
   box-shadow: var(--shadow);
 }
 
@@ -205,7 +273,7 @@ input {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--input-bg);
   padding: 14px 16px;
   color: var(--text);
 }
@@ -222,13 +290,13 @@ button {
 
 button:hover {
   transform: translateY(-1px);
-  border-color: rgba(186, 74, 34, 0.45);
+  border-color: var(--button-hover-line);
 }
 
 button.primary {
   background: linear-gradient(180deg, var(--accent), var(--accent-dark));
   border-color: transparent;
-  color: #fff8f1;
+  color: var(--accent-contrast);
 }
 
 button:disabled {
@@ -246,7 +314,7 @@ button:disabled {
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(255, 251, 245, 0.92);
+  background: var(--panel-soft);
 }
 
 .project-main,

@@ -1,11 +1,14 @@
 const PROJECTS_FILE = "projects.tsv";
 const TIMES_FILE = "times.tsv";
 const CONFIG_KEY = "kronik-webdav-config";
+const THEME_KEY = "kronik-theme";
 const EMPTY_PROJECTS_TSV = "id\tname\tlast_modified\n";
 const EMPTY_TIMES_TSV = "date\tproject_id\tblocks_15m\n";
+const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 const state = {
   config: loadConfig(),
+  theme: loadThemePreference(),
   projects: [],
   times: [],
   remote: defaultRemoteState(),
@@ -24,6 +27,7 @@ const projectsList = document.querySelector("#projects-list");
 const projectTemplate = document.querySelector("#project-template");
 const loadButton = document.querySelector("#load-button");
 const saveButton = document.querySelector("#save-button");
+const themeToggleButton = document.querySelector("#theme-toggle-button");
 const projectForm = document.querySelector("#project-form");
 const projectNameInput = document.querySelector("#project-name");
 const configForm = document.querySelector("#config-form");
@@ -34,6 +38,7 @@ const webdavUserInput = document.querySelector("#webdav-user");
 const webdavPasswordInput = document.querySelector("#webdav-password");
 const clearConfigButton = document.querySelector("#clear-config-button");
 
+applyThemePreference();
 hydrateConfigForm();
 render();
 void maybeAutoLoad();
@@ -54,6 +59,13 @@ loadButton.addEventListener("click", async () => {
 
 saveButton.addEventListener("click", () => {
   queueSave("Saving changes in the background.");
+});
+
+themeToggleButton.addEventListener("click", () => {
+  state.theme = resolvedTheme() === "dark" ? "light" : "dark";
+  persistThemePreference();
+  applyThemePreference();
+  render();
 });
 
 projectForm.addEventListener("submit", (event) => {
@@ -96,6 +108,14 @@ clearConfigButton.addEventListener("click", () => {
   clearStoredConfig();
 });
 
+registerThemeChangeListener(() => {
+  if (state.theme) {
+    return;
+  }
+
+  render();
+});
+
 projectsList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-action]");
   const card = event.target.closest("[data-project-id]");
@@ -133,6 +153,15 @@ function loadConfig() {
   }
 }
 
+function loadThemePreference() {
+  try {
+    const stored = window.localStorage.getItem(THEME_KEY);
+    return stored === "light" || stored === "dark" ? stored : "";
+  } catch (error) {
+    return "";
+  }
+}
+
 function defaultConfig() {
   return {
     baseUrl: "",
@@ -149,6 +178,42 @@ function defaultRemoteState() {
     projectsMissing: false,
     timesMissing: false
   };
+}
+
+function resolvedTheme() {
+  return state.theme || (themeMediaQuery.matches ? "dark" : "light");
+}
+
+function applyThemePreference() {
+  if (state.theme) {
+    document.documentElement.dataset.theme = state.theme;
+    return;
+  }
+
+  delete document.documentElement.dataset.theme;
+}
+
+function persistThemePreference() {
+  try {
+    if (state.theme) {
+      window.localStorage.setItem(THEME_KEY, state.theme);
+    } else {
+      window.localStorage.removeItem(THEME_KEY);
+    }
+  } catch (error) {
+    // Ignore storage failures and continue with the in-memory preference.
+  }
+}
+
+function registerThemeChangeListener(listener) {
+  if (typeof themeMediaQuery.addEventListener === "function") {
+    themeMediaQuery.addEventListener("change", listener);
+    return;
+  }
+
+  if (typeof themeMediaQuery.addListener === "function") {
+    themeMediaQuery.addListener(listener);
+  }
 }
 
 function hydrateConfigForm() {
@@ -508,6 +573,7 @@ function render() {
   const sortedProjects = [...state.projects].sort((left, right) =>
     left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
   );
+  const theme = resolvedTheme();
 
   projectsList.innerHTML = "";
 
@@ -537,6 +603,12 @@ function render() {
   configSummaryText.textContent = buildConfigSummary();
   projectNameInput.disabled = !state.loaded || state.busy;
   loadButton.textContent = state.loaded ? "Reload data" : "Load data";
+  themeToggleButton.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+  themeToggleButton.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
+  themeToggleButton.setAttribute(
+    "aria-label",
+    theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+  );
   saveButton.disabled =
     state.busy ||
     !state.loaded ||
@@ -565,7 +637,7 @@ function markDirty(message) {
 
 function setStatus(message, isError = false) {
   statusText.textContent = message;
-  statusText.style.color = isError ? "#8e3412" : "";
+  statusText.style.color = isError ? "var(--status-error)" : "";
 }
 
 function setBusy(isBusy) {

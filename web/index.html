@@ -4,6 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kronik</title>
+  <script>
+    (() => {
+      try {
+        const theme = window.localStorage.getItem("kronik-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch (error) {
+        // Ignore storage failures and fall back to the default theme.
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="./app.css">
 </head>
 <body>
@@ -15,6 +27,7 @@
       </p>
       <div class="status-actions">
         <button id="load-button" class="primary">Load data</button>
+        <button id="theme-toggle-button" type="button">Dark mode</button>
         <span id="config-summary-text" class="config-summary-text">No server saved.</span>
       </div>
       <details id="config-menu" class="config-menu">
