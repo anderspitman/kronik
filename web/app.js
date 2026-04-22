@@ -49,6 +49,7 @@ const loadButton = document.querySelector("#load-button");
 const saveButton = document.querySelector("#save-button");
 const themeToggleButton = document.querySelector("#theme-toggle-button");
 const projectForm = document.querySelector("#project-form");
+const projectMenu = document.querySelector("#project-menu");
 const projectNameInput = document.querySelector("#project-name");
 const configForm = document.querySelector("#config-form");
 const configMenu = document.querySelector("#config-menu");
@@ -78,7 +79,9 @@ window.addEventListener("beforeunload", (event) => {
 
 loadButton.addEventListener("click", async () => {
   syncConfigFromForm();
-  await loadRemoteState();
+  if (await loadRemoteState()) {
+    configMenu.open = false;
+  }
 });
 
 saveButton.addEventListener("click", () => {
@@ -119,6 +122,7 @@ projectForm.addEventListener("submit", (event) => {
   });
 
   projectNameInput.value = "";
+  projectMenu.open = false;
   markDirty(`Project "${name}" added locally. Saving in the background.`);
   render();
 });
@@ -392,8 +396,10 @@ async function loadRemoteState() {
     }
 
     render();
+    return true;
   } catch (error) {
     setStatus(error.message, true);
+    return false;
   } finally {
     setBusy(false);
   }

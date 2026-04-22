@@ -179,6 +179,13 @@ h3,
   margin-bottom: 20px;
 }
 
+.panel-tools,
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .panel-header h2 {
   margin: 0;
   font-size: 1.6rem;
@@ -196,7 +203,7 @@ h3,
   gap: 14px;
 }
 
-.config-menu {
+.control-menu {
   position: relative;
   z-index: 21;
   border: 1px solid var(--line);
@@ -205,7 +212,7 @@ h3,
   overflow: visible;
 }
 
-.config-summary {
+.control-summary {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -215,33 +222,64 @@ h3,
   white-space: nowrap;
 }
 
-.config-summary::-webkit-details-marker {
+.control-summary::-webkit-details-marker {
   display: none;
 }
 
-.config-summary-text,
-.config-summary-action {
+.control-summary-action,
+.config-summary-text {
   font-size: 0.95rem;
   color: var(--muted);
 }
 
-.config-menu[open] {
+.config-summary-text {
+  margin: 0;
+}
+
+.control-menu[open] {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
 
-.config-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.control-panel {
   padding: 18px;
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
   z-index: 10;
-  width: min(760px, calc(100vw - 48px));
+  width: min(420px, calc(100vw - 48px));
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--menu-panel);
   box-shadow: var(--shadow);
+}
+
+.control-panel-wide {
+  width: min(760px, calc(100vw - 48px));
+}
+
+.control-panel-header {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.control-panel-title {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.control-inline-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.config-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .config-actions {
@@ -253,13 +291,18 @@ h3,
 .status-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
   flex-shrink: 0;
 }
 
+.section-eyebrow {
+  margin-bottom: 14px;
+}
+
 .project-form {
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  margin-bottom: 20px;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 label span {
@@ -497,21 +540,21 @@ button:disabled {
   }
 
   #status-text,
-  .config-summary-text {
+  .config-summary-text,
+  .today-label {
     white-space: normal;
   }
 
-  .config-menu,
-  .config-grid {
+  .control-menu,
+  .control-panel {
     width: 100%;
   }
 
-  .config-grid {
+  .control-panel {
     left: 0;
     right: auto;
   }
 
-  .panel-header,
   .project-main,
   .project-footer {
     align-items: start;
@@ -520,6 +563,10 @@ button:disabled {
 
   .project-history-header {
     align-items: start;
+    flex-direction: column;
+  }
+
+  .control-inline-actions {
     flex-direction: column;
   }
 

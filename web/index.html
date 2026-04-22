@@ -26,47 +26,56 @@
         <span id="status-text">Connect to a WebDAV directory to begin.</span>
       </p>
       <div class="status-actions">
-        <button id="load-button" class="primary">Load data</button>
-        <button id="theme-toggle-button" type="button">Dark mode</button>
-        <span id="config-summary-text" class="config-summary-text">No server saved.</span>
-      </div>
-      <details id="config-menu" class="config-menu">
-        <summary class="config-summary">
-          <span class="config-summary-action">Server</span>
-        </summary>
-        <form id="config-form" class="config-grid" autocomplete="off">
-          <label>
-            <span>Base URL</span>
-            <input id="webdav-url" name="webdav-url" type="url" placeholder="https://dav.example.com/kronik" required>
-          </label>
-          <label>
-            <span>Username</span>
-            <input id="webdav-user" name="webdav-user" type="text" placeholder="Optional">
-          </label>
-          <label>
-            <span>Password</span>
-            <input id="webdav-password" name="webdav-password" type="password" placeholder="Optional">
-          </label>
-          <div class="config-actions">
-            <button id="clear-config-button" type="button">Forget saved login</button>
+        <p id="today-label" class="today-label">No data loaded</p>
+        <button id="save-button" type="button">Save all changes</button>
+        <details id="project-menu" class="control-menu">
+          <summary class="control-summary">
+            <span class="control-summary-action">Add project</span>
+          </summary>
+          <div class="control-panel">
+            <form id="project-form" class="project-form" autocomplete="off">
+              <input id="project-name" name="project-name" type="text" maxlength="64" placeholder="Add a new project" required>
+              <button type="submit" class="primary">Add project</button>
+            </form>
           </div>
-        </form>
-      </details>
+        </details>
+        <button id="theme-toggle-button" type="button">Dark mode</button>
+        <details id="config-menu" class="control-menu">
+          <summary class="control-summary">
+            <span class="control-summary-action">Server</span>
+          </summary>
+          <div class="control-panel control-panel-wide">
+            <div class="control-panel-header">
+              <p class="control-panel-title">Connection</p>
+              <p id="config-summary-text" class="config-summary-text">No server saved.</p>
+            </div>
+            <div class="control-inline-actions">
+              <button id="load-button" type="button" class="primary">Load data</button>
+            </div>
+            <form id="config-form" class="config-grid" autocomplete="off">
+              <label>
+                <span>Base URL</span>
+                <input id="webdav-url" name="webdav-url" type="url" placeholder="https://dav.example.com/kronik" required>
+              </label>
+              <label>
+                <span>Username</span>
+                <input id="webdav-user" name="webdav-user" type="text" placeholder="Optional">
+              </label>
+              <label>
+                <span>Password</span>
+                <input id="webdav-password" name="webdav-password" type="password" placeholder="Optional">
+              </label>
+              <div class="config-actions">
+                <button id="clear-config-button" type="button">Forget saved login</button>
+              </div>
+            </form>
+          </div>
+        </details>
+      </div>
     </header>
 
     <section class="panel">
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Projects</p>
-          <h2>Today</h2>
-        </div>
-        <p id="today-label" class="today-label">No data loaded</p>
-      </div>
-      <form id="project-form" class="project-form" autocomplete="off">
-        <input id="project-name" name="project-name" type="text" maxlength="64" placeholder="Add a new project" required>
-        <button type="submit" class="primary">Add project</button>
-        <button id="save-button" type="button">Save all changes</button>
-      </form>
+      <p class="eyebrow section-eyebrow">Projects</p>
       <div id="projects-empty" class="empty-state">No projects yet.</div>
       <div id="projects-list" class="projects-list"></div>
     </section>
