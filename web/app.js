@@ -212,6 +212,7 @@ async function webdavFetch(name, options = {}) {
 
 async function readRemoteFile(name, emptyText) {
   const response = await webdavFetch(name, {
+    cache: "no-store",
     headers: {
       Accept: "text/tab-separated-values,text/plain;q=0.9,*/*;q=0.1"
     }
