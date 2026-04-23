@@ -62,6 +62,7 @@ const chartTooltip = document.querySelector("#chart-tooltip");
 const chartTooltipDate = document.querySelector("#chart-tooltip-date");
 const chartTooltipValue = document.querySelector("#chart-tooltip-value");
 let resizeRenderTimer = 0;
+let viewportRestoreFrame = 0;
 
 applyThemePreference();
 hydrateConfigForm();
@@ -945,7 +946,24 @@ function renderHistoryChart(container, projectName, history) {
   container.appendChild(svg);
 }
 
+function snapshotViewport() {
+  return {
+    x: window.scrollX,
+    y: window.scrollY
+  };
+}
+
+function restoreViewport(viewport) {
+  window.scrollTo(viewport.x, viewport.y);
+  window.cancelAnimationFrame(viewportRestoreFrame);
+  viewportRestoreFrame = window.requestAnimationFrame(() => {
+    window.scrollTo(viewport.x, viewport.y);
+    viewportRestoreFrame = 0;
+  });
+}
+
 function render() {
+  const viewport = snapshotViewport();
   const sortedProjects = [...state.projects].sort((left, right) =>
     left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
   );
@@ -997,6 +1015,7 @@ function render() {
     state.saving ||
     (!state.dirty && !state.remote.projectsMissing && !state.remote.timesMissing);
   saveButton.textContent = state.saving ? "Saving..." : "Save now";
+  restoreViewport(viewport);
 }
 
 function buildConfigSummary() {
