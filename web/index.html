@@ -75,6 +75,27 @@
     </header>
 
     <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">All projects</p>
+          <h2>Tracked hours</h2>
+        </div>
+        <p id="overview-total" class="panel-note">Load data to see project totals.</p>
+      </div>
+      <div id="overview-empty" class="empty-state">Load data to see daily project hours.</div>
+      <div id="overview-chart" class="project-overview is-hidden">
+        <div class="project-history project-overview-history">
+          <div class="project-history-header">
+            <span class="project-history-label">Daily hours by project</span>
+            <span id="overview-range" class="project-history-range"></span>
+          </div>
+          <div id="overview-history-chart" class="project-history-chart"></div>
+        </div>
+        <div id="overview-legend" class="project-overview-legend"></div>
+      </div>
+    </section>
+
+    <section class="panel">
       <p class="eyebrow section-eyebrow">Projects</p>
       <div id="projects-empty" class="empty-state">No projects yet.</div>
       <div id="projects-list" class="projects-list"></div>

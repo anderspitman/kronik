@@ -42,6 +42,12 @@ const state = {
 
 const statusText = document.querySelector("#status-text");
 const todayLabel = document.querySelector("#today-label");
+const overviewTotal = document.querySelector("#overview-total");
+const overviewEmpty = document.querySelector("#overview-empty");
+const overviewChart = document.querySelector("#overview-chart");
+const overviewRange = document.querySelector("#overview-range");
+const overviewHistoryChart = document.querySelector("#overview-history-chart");
+const overviewLegend = document.querySelector("#overview-legend");
 const projectsEmpty = document.querySelector("#projects-empty");
 const projectsList = document.querySelector("#projects-list");
 const projectTemplate = document.querySelector("#project-template");
@@ -179,6 +185,25 @@ projectsList.addEventListener("pointerleave", () => {
 });
 
 projectsList.addEventListener("pointerdown", () => {
+  hideChartTooltip();
+});
+
+overviewChart.addEventListener("pointermove", (event) => {
+  const bar = closestChartBar(event.target);
+
+  if (!bar) {
+    hideChartTooltip();
+    return;
+  }
+
+  showChartTooltip(bar, event.clientX, event.clientY);
+});
+
+overviewChart.addEventListener("pointerleave", () => {
+  hideChartTooltip();
+});
+
+overviewChart.addEventListener("pointerdown", () => {
   hideChartTooltip();
 });
 
@@ -607,39 +632,6 @@ function findOrCreateTodayEntry(projectId) {
   return entry;
 }
 
-function todayBlocksForProject(projectId) {
-  const entry = state.times.find((item) => item.projectId === projectId && item.date === state.today);
-  return entry ? entry.blocks : 0;
-}
-
-function totalBlocksForProject(projectId) {
-  return state.times
-    .filter((entry) => entry.projectId === projectId)
-    .reduce((sum, entry) => sum + entry.blocks, 0);
-}
-
-function historyForProject(projectId) {
-  const projectEntries = state.times
-    .filter((entry) => entry.projectId === projectId)
-    .sort((left, right) => left.date.localeCompare(right.date));
-
-  if (!projectEntries.length) {
-    return [{ date: state.today, blocks: 0 }];
-  }
-
-  const blocksByDate = new Map(
-    projectEntries.map((entry) => [entry.date, entry.blocks])
-  );
-  const firstDate = projectEntries[0].date;
-  const lastRecordedDate = projectEntries[projectEntries.length - 1].date;
-  const lastDate = state.today > lastRecordedDate ? state.today : lastRecordedDate;
-
-  return enumerateDates(firstDate, lastDate).map((date) => ({
-    date,
-    blocks: blocksByDate.get(date) || 0
-  }));
-}
-
 function formatBlocks(blocks) {
   const totalMinutes = blocks * 15;
   const hours = Math.floor(totalMinutes / 60);
@@ -669,6 +661,12 @@ function formatHours(blocks) {
 function formatHoursLabel(blocks) {
   const hours = blocks / 4;
   return `${formatHours(blocks)} hour${hours === 1 ? "" : "s"}`;
+}
+
+function formatPercent(ratio) {
+  const percentage = ratio * 100;
+  const decimals = Number.isInteger(percentage) || percentage >= 99.95 ? 0 : 1;
+  return `${percentage.toFixed(decimals).replace(/\.0$/, "")}%`;
 }
 
 function enumerateDates(startDate, endDate) {
@@ -756,12 +754,183 @@ function buildXAxisTicks(history) {
     }));
 }
 
+function historyRangeFromIndex(blocksIndex) {
+  const startDate = blocksIndex.firstDate || state.today;
+  const lastRecordedDate = blocksIndex.lastDate || state.today;
+  const endDate = state.today > lastRecordedDate ? state.today : lastRecordedDate;
+
+  return {
+    startDate,
+    endDate
+  };
+}
+
+function historyDatesFromIndex(blocksIndex) {
+  const { startDate, endDate } = historyRangeFromIndex(blocksIndex);
+  return enumerateDates(startDate, endDate);
+}
+
+function buildBlocksIndex() {
+  const totalsByProject = new Map();
+  const todayByProject = new Map();
+  const blocksByDate = new Map();
+  let firstDate = "";
+  let lastDate = "";
+
+  state.times.forEach((entry) => {
+    totalsByProject.set(entry.projectId, (totalsByProject.get(entry.projectId) || 0) + entry.blocks);
+
+    if (entry.date === state.today) {
+      todayByProject.set(entry.projectId, (todayByProject.get(entry.projectId) || 0) + entry.blocks);
+    }
+
+    if (!blocksByDate.has(entry.date)) {
+      blocksByDate.set(entry.date, {
+        totalBlocks: 0,
+        byProject: new Map()
+      });
+    }
+
+    {
+      const day = blocksByDate.get(entry.date);
+
+      day.totalBlocks += entry.blocks;
+      day.byProject.set(entry.projectId, (day.byProject.get(entry.projectId) || 0) + entry.blocks);
+    }
+
+    if (!firstDate || entry.date < firstDate) {
+      firstDate = entry.date;
+    }
+
+    if (!lastDate || entry.date > lastDate) {
+      lastDate = entry.date;
+    }
+  });
+
+  return {
+    totalsByProject,
+    todayByProject,
+    blocksByDate,
+    firstDate,
+    lastDate
+  };
+}
+
+function projectOverviewColor(index, theme) {
+  const hue = Math.round((18 + index * 137.508) % 360);
+  const saturation = theme === "dark" ? 68 : 62;
+  const lightness = theme === "dark" ? 56 : 44;
+
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+}
+
+function buildProjectHistory(project, blocksIndex) {
+  return historyDatesFromIndex(blocksIndex).map((date) => {
+    const day = blocksIndex.blocksByDate.get(date);
+    const blocks = day ? day.byProject.get(project.id) || 0 : 0;
+    const dateLabel = formatLongDate(date);
+    const isToday = date === state.today;
+
+    return {
+      date,
+      blocks,
+      segments: blocks
+        ? [
+            {
+              blocks,
+              className: ["project-history-bar", isToday ? "is-today" : ""].filter(Boolean).join(" "),
+              tooltipDate: dateLabel,
+              tooltipValue: formatHoursLabel(blocks),
+              ariaLabel: `${dateLabel}: ${formatHoursLabel(blocks)}`
+            }
+          ]
+        : [],
+      zeroBar: {
+        className: ["project-history-bar", "is-zero", isToday ? "is-today" : ""]
+          .filter(Boolean)
+          .join(" "),
+        tooltipDate: dateLabel,
+        tooltipValue: "0 hours",
+        ariaLabel: `${dateLabel}: 0 hours`
+      }
+    };
+  });
+}
+
+function buildProjectOverview(projects, blocksIndex, theme) {
+  const items = projects
+    .map((project) => ({
+      id: project.id,
+      name: project.name,
+      totalBlocks: blocksIndex.totalsByProject.get(project.id) || 0
+    }))
+    .sort((left, right) => {
+      if (right.totalBlocks !== left.totalBlocks) {
+        return right.totalBlocks - left.totalBlocks;
+      }
+
+      return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+    });
+  const totalBlocks = items.reduce((sum, item) => sum + item.totalBlocks, 0);
+  const activeItems = items
+    .filter((item) => item.totalBlocks > 0)
+    .map((item, index) => ({
+      ...item,
+      ratio: totalBlocks ? item.totalBlocks / totalBlocks : 0,
+      color: projectOverviewColor(index, theme)
+    }));
+  const history = activeItems.length
+    ? historyDatesFromIndex(blocksIndex).map((date) => {
+        const day = blocksIndex.blocksByDate.get(date);
+        const blocks = day ? day.totalBlocks : 0;
+        const dateLabel = formatLongDate(date);
+        const isToday = date === state.today;
+        const segments = activeItems
+          .map((item) => ({
+            ...item,
+            blocks: day ? day.byProject.get(item.id) || 0 : 0
+          }))
+          .filter((item) => item.blocks > 0)
+          .map((item) => ({
+            blocks: item.blocks,
+            className: ["project-overview-segment", isToday ? "is-today" : ""].filter(Boolean).join(" "),
+            fill: item.color,
+            tooltipDate: dateLabel,
+            tooltipValue:
+              `${item.name}: ${formatHoursLabel(item.blocks)} ` +
+              `(${formatPercent(blocks ? item.blocks / blocks : 0)} of day, ${formatPercent(item.ratio)} overall)`,
+            ariaLabel: `${dateLabel} ${item.name}: ${formatHoursLabel(item.blocks)}`
+          }));
+
+        return {
+          date,
+          blocks,
+          segments,
+          zeroBar: {
+            className: ["project-overview-zero-bar", isToday ? "is-today" : ""].filter(Boolean).join(" "),
+            tooltipDate: dateLabel,
+            tooltipValue: "0 hours",
+            ariaLabel: `${dateLabel}: 0 hours`
+          }
+        };
+      })
+    : [];
+
+  return {
+    totalBlocks,
+    totalProjects: items.length,
+    activeItems,
+    inactiveCount: items.length - activeItems.length,
+    history
+  };
+}
+
 function closestChartBar(target) {
   if (!(target instanceof Element)) {
     return null;
   }
 
-  return target.closest(".project-history-bar");
+  return target.closest(".project-history-bar, .project-overview-segment, .project-overview-zero-bar");
 }
 
 function showChartTooltip(bar, clientX, clientY) {
@@ -798,7 +967,7 @@ function positionChartTooltip(clientX, clientY) {
   chartTooltip.style.top = `${top}px`;
 }
 
-function renderHistoryChart(container, projectName, history) {
+function renderStackedHistoryChart(container, chartLabel, history) {
   const chartWidth = Math.max(Math.round(container.getBoundingClientRect().width), CHART_MIN_WIDTH);
   const plotLeft = CHART_MARGIN_LEFT;
   const plotTop = CHART_MARGIN_TOP;
@@ -820,10 +989,7 @@ function renderHistoryChart(container, projectName, history) {
   svg.setAttribute("height", "100%");
   svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
   svg.setAttribute("role", "img");
-  svg.setAttribute(
-    "aria-label",
-    `${projectName} daily hours from ${history[0].date} to ${history[history.length - 1].date}`
-  );
+  svg.setAttribute("aria-label", `${chartLabel} from ${history[0].date} to ${history[history.length - 1].date}`);
   svg.classList.add("project-history-svg");
 
   yAxis.ticks.forEach((tickHours) => {
@@ -890,34 +1056,59 @@ function renderHistoryChart(container, projectName, history) {
   }
 
   history.forEach((entry, index) => {
-    const rect = document.createElementNS(SVG_NS, "rect");
-    const hours = entry.blocks / 4;
-    const barHeight = entry.blocks
-      ? Math.max(CHART_MIN_BAR_HEIGHT, Math.round((hours / yAxis.maxHours) * plotHeight))
-      : CHART_MIN_BAR_HEIGHT;
     const x = plotLeft + index * slotWidth + (slotWidth - barWidth) / 2;
-    const y = plotBottom - barHeight;
+    const segments = entry.segments || [];
 
-    rect.setAttribute("x", String(x));
-    rect.setAttribute("y", String(y));
-    rect.setAttribute("width", String(barWidth));
-    rect.setAttribute("height", String(barHeight));
-    rect.setAttribute("rx", "2");
-    rect.setAttribute("aria-label", `${formatLongDate(entry.date)}: ${formatHoursLabel(entry.blocks)}`);
-    rect.dataset.tooltipDate = formatLongDate(entry.date);
-    rect.dataset.tooltipValue = formatHoursLabel(entry.blocks);
-    rect.setAttribute(
-      "class",
-      [
-        "project-history-bar",
-        entry.blocks ? "" : "is-zero",
-        entry.date === state.today ? "is-today" : ""
-      ]
-        .filter(Boolean)
-        .join(" ")
-    );
+    if (!segments.length) {
+      const rect = document.createElementNS(SVG_NS, "rect");
 
-    svg.appendChild(rect);
+      rect.setAttribute("x", String(x));
+      rect.setAttribute("y", String(plotBottom - CHART_MIN_BAR_HEIGHT));
+      rect.setAttribute("width", String(barWidth));
+      rect.setAttribute("height", String(CHART_MIN_BAR_HEIGHT));
+      rect.setAttribute("rx", "2");
+      rect.setAttribute("class", entry.zeroBar.className);
+      rect.setAttribute("aria-label", entry.zeroBar.ariaLabel);
+      rect.dataset.tooltipDate = entry.zeroBar.tooltipDate;
+      rect.dataset.tooltipValue = entry.zeroBar.tooltipValue;
+      svg.appendChild(rect);
+      return;
+    }
+
+    {
+      const barHeight = Math.max(CHART_MIN_BAR_HEIGHT, ((entry.blocks / 4) / yAxis.maxHours) * plotHeight);
+      const barTop = plotBottom - barHeight;
+      let nextY = plotBottom;
+
+      segments.forEach((segment, segmentIndex) => {
+        const rect = document.createElementNS(SVG_NS, "rect");
+        const segmentHeight =
+          segmentIndex === segments.length - 1
+            ? nextY - barTop
+            : barHeight * (segment.blocks / entry.blocks);
+        const y = nextY - segmentHeight;
+
+        rect.setAttribute("x", String(x));
+        rect.setAttribute("y", String(y));
+        rect.setAttribute("width", String(barWidth));
+        rect.setAttribute("height", String(segmentHeight));
+        rect.setAttribute("class", segment.className);
+        rect.setAttribute("aria-label", segment.ariaLabel);
+        rect.dataset.tooltipDate = segment.tooltipDate;
+        rect.dataset.tooltipValue = segment.tooltipValue;
+
+        if (segments.length === 1) {
+          rect.setAttribute("rx", "2");
+        }
+
+        if (segment.fill) {
+          rect.setAttribute("fill", segment.fill);
+        }
+
+        svg.appendChild(rect);
+        nextY = y;
+      });
+    }
   });
 
   xTicks.forEach((tickEntry, tickIndex) => {
@@ -946,6 +1137,71 @@ function renderHistoryChart(container, projectName, history) {
   container.appendChild(svg);
 }
 
+function renderProjectOverview(projects, blocksIndex, theme) {
+  const overview = buildProjectOverview(projects, blocksIndex, theme);
+
+  overviewHistoryChart.replaceChildren();
+  overviewLegend.replaceChildren();
+  overviewRange.textContent = "";
+
+  if (!state.loaded) {
+    overviewTotal.textContent = "Load data to see project totals.";
+    overviewEmpty.textContent = "Load data to see daily project hours.";
+    overviewEmpty.classList.remove("is-hidden");
+    overviewChart.classList.add("is-hidden");
+    return;
+  }
+
+  if (!overview.totalProjects) {
+    overviewTotal.textContent = "No projects loaded.";
+    overviewEmpty.textContent = "Add a project to start tracking time.";
+    overviewEmpty.classList.remove("is-hidden");
+    overviewChart.classList.add("is-hidden");
+    return;
+  }
+
+  if (!overview.totalBlocks) {
+    overviewTotal.textContent =
+      `${overview.totalProjects} project${overview.totalProjects === 1 ? "" : "s"} loaded.`;
+    overviewEmpty.textContent = "No tracked hours yet.";
+    overviewEmpty.classList.remove("is-hidden");
+    overviewChart.classList.add("is-hidden");
+    return;
+  }
+
+  overviewTotal.textContent =
+    `Total tracked: ${formatHoursLabel(overview.totalBlocks)} across ` +
+    `${overview.activeItems.length} active project${overview.activeItems.length === 1 ? "" : "s"}` +
+    `${overview.inactiveCount ? `, ${overview.inactiveCount} without time` : ""}.`;
+  overviewRange.textContent = formatHistoryRange(overview.history);
+  overviewEmpty.classList.add("is-hidden");
+  overviewChart.classList.remove("is-hidden");
+  renderStackedHistoryChart(overviewHistoryChart, "All projects daily hours", overview.history);
+
+  overview.activeItems.forEach((item) => {
+    const legendItem = document.createElement("div");
+    const legendMain = document.createElement("div");
+    const swatch = document.createElement("span");
+    const name = document.createElement("span");
+    const value = document.createElement("span");
+
+    legendItem.className = "project-overview-legend-item";
+    legendMain.className = "project-overview-legend-main";
+    swatch.className = "project-overview-swatch";
+    swatch.style.background = item.color;
+    name.className = "project-overview-legend-name";
+    name.textContent = item.name;
+    value.className = "project-overview-legend-value";
+    value.textContent = `${formatHours(item.totalBlocks)}h · ${formatPercent(item.ratio)}`;
+
+    legendMain.appendChild(swatch);
+    legendMain.appendChild(name);
+    legendItem.appendChild(legendMain);
+    legendItem.appendChild(value);
+    overviewLegend.appendChild(legendItem);
+  });
+}
+
 function snapshotViewport() {
   return {
     x: window.scrollX,
@@ -967,16 +1223,18 @@ function render() {
   const sortedProjects = [...state.projects].sort((left, right) =>
     left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
   );
+  const blocksIndex = buildBlocksIndex();
   const theme = resolvedTheme();
 
   hideChartTooltip();
+  renderProjectOverview(sortedProjects, blocksIndex, theme);
   projectsList.innerHTML = "";
 
   sortedProjects.forEach((project) => {
     const fragment = projectTemplate.content.cloneNode(true);
-    const todayBlocks = todayBlocksForProject(project.id);
-    const totalBlocks = totalBlocksForProject(project.id);
-    const history = historyForProject(project.id);
+    const todayBlocks = blocksIndex.todayByProject.get(project.id) || 0;
+    const totalBlocks = blocksIndex.totalsByProject.get(project.id) || 0;
+    const history = buildProjectHistory(project, blocksIndex);
     const historyRange = fragment.querySelector(".project-history-range");
     const historyChart = fragment.querySelector(".project-history-chart");
     const card = fragment.querySelector(".project-card");
@@ -995,7 +1253,7 @@ function render() {
     fragment.querySelector(".decrement").dataset.delta = "-1";
 
     projectsList.appendChild(fragment);
-    renderHistoryChart(historyChart, project.name, history);
+    renderStackedHistoryChart(historyChart, `${project.name} daily hours`, history);
   });
 
   projectsEmpty.classList.toggle("is-hidden", sortedProjects.length > 0);
