@@ -1,9 +1,9 @@
 Kronik Web App
 
-This directory contains the frontend-only port of Kronik.
+This directory contains the Kronik web app.
 
 Usage:
-- Serve the `web/` directory as static files.
+- Serve the directory as static files.
 - In the app, set the WebDAV base URL to the directory that should contain `projects.tsv` and `times.tsv`.
 - The browser talks directly to WebDAV with `GET` and `PUT`. There is no backend.
 
