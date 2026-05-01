@@ -225,6 +225,10 @@ button.is-active {
   border-top: 0;
 }
 
+.project-overview-timeline {
+  margin-top: 2px;
+}
+
 .project-overview-segment,
 .project-overview-zero-bar {
   transition: opacity 140ms ease;
@@ -526,6 +530,18 @@ button:disabled {
   height: 100%;
 }
 
+.project-timeline-chart {
+  width: 100%;
+  min-height: 72px;
+  overflow: hidden;
+}
+
+.project-timeline-chart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .project-history-axis {
   stroke: var(--line);
   stroke-width: 1;
@@ -569,6 +585,37 @@ button:disabled {
 
 .project-history-bar.is-zero {
   fill: var(--line);
+  opacity: 1;
+}
+
+.project-timeline-gridline {
+  stroke: var(--line);
+  stroke-width: 1;
+  opacity: 0.45;
+}
+
+.project-timeline-today-line {
+  stroke: var(--button-hover-line);
+  stroke-width: 1;
+}
+
+.project-timeline-row-guide {
+  stroke: var(--line);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
+.project-timeline-segment {
+  opacity: 0.82;
+  cursor: default;
+  transition: opacity 140ms ease;
+}
+
+.project-timeline-chart:hover .project-timeline-segment {
+  opacity: 0.35;
+}
+
+.project-timeline-chart .project-timeline-segment:hover {
   opacity: 1;
 }
 

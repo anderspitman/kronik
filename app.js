@@ -13,6 +13,12 @@ const CHART_MARGIN_LEFT = 36;
 const CHART_MIN_WIDTH = 240;
 const CHART_MIN_BAR_HEIGHT = 2;
 const CHART_TICK_SIZE = 4;
+const TIMELINE_MARGIN_TOP = 8;
+const TIMELINE_MARGIN_BOTTOM = 28;
+const TIMELINE_ROW_HEIGHT = 24;
+const TIMELINE_ROW_GAP = 6;
+const TIMELINE_BAR_HEIGHT = 12;
+const TIMELINE_MIN_HEIGHT = 72;
 const VALID_ACTIONS = new Set(["clock_in", "clock_out"]);
 const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 const shortDateFormatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
@@ -40,6 +46,7 @@ const overviewEmpty = document.querySelector("#overview-empty");
 const overviewChart = document.querySelector("#overview-chart");
 const overviewRange = document.querySelector("#overview-range");
 const overviewHistoryChart = document.querySelector("#overview-history-chart");
+const overviewTimelineChart = document.querySelector("#overview-timeline-chart");
 const overviewLegend = document.querySelector("#overview-legend");
 const projectsEmpty = document.querySelector("#projects-empty");
 const projectsList = document.querySelector("#projects-list");
@@ -690,6 +697,7 @@ function buildMinuteIndex() {
   const totalsByProject = new Map();
   const todayByProject = new Map();
   const minutesByDate = new Map();
+  const sessionSegments = [];
   const events = sortEvents(state.times);
   const now = new Date();
   let activeProjectId = "";
@@ -729,6 +737,13 @@ function buildMinuteIndex() {
         return;
       }
 
+      sessionSegments.push({
+        projectId,
+        date: segment.date,
+        start: segment.start,
+        end: segment.end,
+        minutes
+      });
       totalsByProject.set(projectId, (totalsByProject.get(projectId) || 0) + minutes);
 
       if (segment.date === state.today) {
@@ -763,6 +778,7 @@ function buildMinuteIndex() {
     totalsByProject,
     todayByProject,
     minutesByDate,
+    sessionSegments,
     firstDate,
     lastDate
   };
@@ -1045,14 +1061,56 @@ function buildProjectOverview(projects, minuteIndex, theme) {
         };
       })
     : [];
+  const timeline = activeItems.length
+    ? buildProjectTimeline(activeItems, history, minuteIndex.sessionSegments)
+    : [];
 
   return {
     totalMinutes,
     totalProjects: items.length,
     activeItems,
     inactiveCount: items.length - activeItems.length,
-    history
+    history,
+    timeline
   };
+}
+
+function buildProjectTimeline(projects, history, sessionSegments) {
+  const dateIndices = new Map(history.map((entry, index) => [entry.date, index]));
+
+  return projects.map((project) => {
+    const ranges = sessionSegments
+      .filter((segment) => segment.projectId === project.id && dateIndices.has(segment.date))
+      .map((segment) => ({
+        dateIndex: dateIndices.get(segment.date),
+        date: segment.date,
+        start: segment.start,
+        end: segment.end,
+        minutes: segment.minutes,
+        startRatio: dayProgress(segment.start),
+        endRatio: dayProgress(segment.end, segment.date)
+      }));
+
+    return {
+      ...project,
+      ranges
+    };
+  });
+}
+
+function dayProgress(date, segmentDate) {
+  if (segmentDate && dateKeyFromDate(date) > segmentDate) {
+    return 1;
+  }
+
+  const startOfDay = new Date(date);
+
+  startOfDay.setHours(0, 0, 0, 0);
+  const nextDay = new Date(startOfDay);
+
+  nextDay.setDate(nextDay.getDate() + 1);
+
+  return Math.min(1, Math.max(0, (date - startOfDay) / (nextDay - startOfDay)));
 }
 
 function closestChartBar(target) {
@@ -1060,7 +1118,7 @@ function closestChartBar(target) {
     return null;
   }
 
-  return target.closest(".project-history-bar, .project-overview-segment, .project-overview-zero-bar");
+  return target.closest(".project-history-bar, .project-overview-segment, .project-overview-zero-bar, .project-timeline-segment");
 }
 
 function showChartTooltip(bar, clientX, clientY) {
@@ -1267,10 +1325,118 @@ function renderStackedHistoryChart(container, chartLabel, history) {
   container.appendChild(svg);
 }
 
+function renderProjectTimelineChart(container, chartLabel, history, timeline) {
+  const chartWidth = Math.max(Math.round(container.getBoundingClientRect().width), CHART_MIN_WIDTH);
+  const plotLeft = CHART_MARGIN_LEFT;
+  const plotTop = TIMELINE_MARGIN_TOP;
+  const plotBottom = plotTop + timeline.length * TIMELINE_ROW_HEIGHT + Math.max(0, timeline.length - 1) * TIMELINE_ROW_GAP;
+  const chartHeight = Math.max(TIMELINE_MIN_HEIGHT, plotBottom + TIMELINE_MARGIN_BOTTOM);
+  const plotRight = chartWidth - CHART_MARGIN_RIGHT;
+  const plotWidth = Math.max(plotRight - plotLeft, history.length);
+  const slotWidth = plotWidth / history.length;
+  const xTicks = buildXAxisTicks(history);
+  const svg = document.createElementNS(SVG_NS, "svg");
+
+  container.replaceChildren();
+  container.style.height = `${chartHeight}px`;
+
+  svg.setAttribute("viewBox", `0 0 ${chartWidth} ${chartHeight}`);
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `${chartLabel} from ${history[0].date} to ${history[history.length - 1].date}`);
+  svg.classList.add("project-history-svg");
+
+  history.forEach((entry, index) => {
+    const x = plotLeft + index * slotWidth;
+    const line = document.createElementNS(SVG_NS, "line");
+
+    line.setAttribute("x1", String(x));
+    line.setAttribute("x2", String(x));
+    line.setAttribute("y1", String(plotTop));
+    line.setAttribute("y2", String(plotBottom));
+    line.setAttribute("class", entry.date === state.today ? "project-timeline-today-line" : "project-timeline-gridline");
+    svg.appendChild(line);
+  });
+
+  {
+    const rightLine = document.createElementNS(SVG_NS, "line");
+
+    rightLine.setAttribute("x1", String(plotRight));
+    rightLine.setAttribute("x2", String(plotRight));
+    rightLine.setAttribute("y1", String(plotTop));
+    rightLine.setAttribute("y2", String(plotBottom));
+    rightLine.setAttribute("class", "project-timeline-gridline");
+    svg.appendChild(rightLine);
+  }
+
+  timeline.forEach((project, rowIndex) => {
+    const rowTop = plotTop + rowIndex * (TIMELINE_ROW_HEIGHT + TIMELINE_ROW_GAP);
+    const rowCenter = rowTop + TIMELINE_ROW_HEIGHT / 2;
+    const guide = document.createElementNS(SVG_NS, "line");
+
+    guide.setAttribute("x1", String(plotLeft));
+    guide.setAttribute("x2", String(plotRight));
+    guide.setAttribute("y1", String(rowCenter));
+    guide.setAttribute("y2", String(rowCenter));
+    guide.setAttribute("class", "project-timeline-row-guide");
+    svg.appendChild(guide);
+
+    project.ranges.forEach((range) => {
+      const rect = document.createElementNS(SVG_NS, "rect");
+      const x = plotLeft + (range.dateIndex + range.startRatio) * slotWidth;
+      const width = Math.max(2, (range.endRatio - range.startRatio) * slotWidth);
+      const y = rowCenter - TIMELINE_BAR_HEIGHT / 2;
+      const rangeLabel = formatLongDate(range.date);
+      const timeLabel = `${formatTime(range.start)} - ${formatTime(range.end)}`;
+
+      rect.setAttribute("x", String(x));
+      rect.setAttribute("y", String(y));
+      rect.setAttribute("width", String(width));
+      rect.setAttribute("height", String(TIMELINE_BAR_HEIGHT));
+      rect.setAttribute("rx", "6");
+      rect.setAttribute("class", "project-timeline-segment");
+      rect.setAttribute("fill", project.color);
+      rect.setAttribute("aria-label", `${project.displayName}, ${rangeLabel}, ${timeLabel}: ${formatDurationLabel(range.minutes)}`);
+      rect.dataset.tooltipDate = rangeLabel;
+      rect.dataset.tooltipValue = `${project.displayName}: ${timeLabel}, ${formatDurationLabel(range.minutes)}`;
+      svg.appendChild(rect);
+    });
+  });
+
+  xTicks.forEach((tickEntry, tickIndex) => {
+    const x = plotLeft + tickEntry.index * slotWidth + slotWidth / 2;
+    const tick = document.createElementNS(SVG_NS, "line");
+    const label = document.createElementNS(SVG_NS, "text");
+
+    tick.setAttribute("x1", String(x));
+    tick.setAttribute("x2", String(x));
+    tick.setAttribute("y1", String(plotBottom));
+    tick.setAttribute("y2", String(plotBottom + CHART_TICK_SIZE));
+    tick.setAttribute("class", "project-history-axis-tick");
+    svg.appendChild(tick);
+
+    label.setAttribute("x", String(x));
+    label.setAttribute("y", String(plotBottom + CHART_TICK_SIZE + 11));
+    label.setAttribute(
+      "text-anchor",
+      tickIndex === 0 ? "start" : tickIndex === xTicks.length - 1 ? "end" : "middle"
+    );
+    label.setAttribute("class", "project-history-axis-label");
+    label.textContent = formatShortDate(tickEntry.date);
+    svg.appendChild(label);
+  });
+
+  container.appendChild(svg);
+}
+
 function renderProjectOverview(projects, minuteIndex, theme) {
   const overview = buildProjectOverview(projects, minuteIndex, theme);
 
   overviewHistoryChart.replaceChildren();
+  overviewTimelineChart.replaceChildren();
+  overviewTimelineChart.style.height = "";
   overviewLegend.replaceChildren();
   overviewRange.textContent = "";
 
@@ -1306,6 +1472,7 @@ function renderProjectOverview(projects, minuteIndex, theme) {
   overviewEmpty.classList.add("is-hidden");
   overviewChart.classList.remove("is-hidden");
   renderStackedHistoryChart(overviewHistoryChart, "All projects daily hours", overview.history);
+  renderProjectTimelineChart(overviewTimelineChart, "Project work timeline", overview.history, overview.timeline);
 
   overview.activeItems.forEach((item) => {
     const legendItem = document.createElement("div");
