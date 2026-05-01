@@ -171,6 +171,23 @@ h3,
   margin-bottom: 24px;
 }
 
+.clock-panel {
+  margin-bottom: 18px;
+}
+
+.clock-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.clock-buttons button.is-active,
+button.is-active {
+  background: linear-gradient(180deg, var(--accent), var(--accent-dark));
+  border-color: transparent;
+  color: var(--accent-contrast);
+}
+
 .panel-header {
   display: flex;
   align-items: end;
@@ -450,6 +467,11 @@ button:disabled {
   background: var(--panel-soft);
 }
 
+.project-card.is-active {
+  border-color: var(--button-hover-line);
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+
 .project-main,
 .project-footer {
   display: flex;
@@ -593,12 +615,6 @@ button:disabled {
   color: var(--muted);
 }
 
-.project-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .today-total {
   min-width: 92px;
   text-align: center;
@@ -669,7 +685,7 @@ button:disabled {
     flex-direction: column;
   }
 
-  .project-actions {
+  .clock-buttons {
     width: 100%;
     justify-content: space-between;
   }

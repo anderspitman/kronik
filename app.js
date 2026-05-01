@@ -2,8 +2,8 @@ const PROJECTS_FILE = "projects.tsv";
 const TIMES_FILE = "times.tsv";
 const CONFIG_KEY = "kronik-webdav-config";
 const THEME_KEY = "kronik-theme";
-const EMPTY_PROJECTS_TSV = "id\tname\tlast_modified\n";
-const EMPTY_TIMES_TSV = "date\tproject_id\tblocks_15m\n";
+const EMPTY_PROJECTS_TSV = "id\tdisplay_name\n";
+const EMPTY_TIMES_TSV = "timestamp\tproject_id\taction\n";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CHART_HEIGHT = 96;
 const CHART_MARGIN_TOP = 8;
@@ -13,18 +13,11 @@ const CHART_MARGIN_LEFT = 36;
 const CHART_MIN_WIDTH = 240;
 const CHART_MIN_BAR_HEIGHT = 2;
 const CHART_TICK_SIZE = 4;
+const VALID_ACTIONS = new Set(["clock_in", "clock_out"]);
 const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-const shortDateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC"
-});
-const longDateFormatter = new Intl.DateTimeFormat(undefined, {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC"
-});
+const shortDateFormatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+const longDateFormatter = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" });
+const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
 const state = {
   config: loadConfig(),
@@ -64,6 +57,7 @@ const webdavUrlInput = document.querySelector("#webdav-url");
 const webdavUserInput = document.querySelector("#webdav-user");
 const webdavPasswordInput = document.querySelector("#webdav-password");
 const clearConfigButton = document.querySelector("#clear-config-button");
+const clockButtons = document.querySelector("#clock-buttons");
 const chartTooltip = document.querySelector("#chart-tooltip");
 const chartTooltipDate = document.querySelector("#chart-tooltip-date");
 const chartTooltipValue = document.querySelector("#chart-tooltip-value");
@@ -74,6 +68,12 @@ applyThemePreference();
 hydrateConfigForm();
 render();
 void maybeAutoLoad();
+
+window.setInterval(() => {
+  if (state.loaded && currentStatus().projectId) {
+    render();
+  }
+}, 60000);
 
 window.addEventListener("beforeunload", (event) => {
   if (!state.dirty) {
@@ -110,27 +110,25 @@ projectForm.addEventListener("submit", (event) => {
     return;
   }
 
-  const name = sanitizeField(projectNameInput.value);
-  if (!name) {
+  const displayName = sanitizeField(projectNameInput.value);
+  if (!displayName) {
     setStatus("Project name is required.", true);
     return;
   }
 
-  if (state.projects.some((project) => project.name.toLowerCase() === name.toLowerCase())) {
-    setStatus(`Project "${name}" already exists.`, true);
+  if (state.projects.some((project) => project.displayName.toLowerCase() === displayName.toLowerCase())) {
+    setStatus(`Project "${displayName}" already exists.`, true);
     return;
   }
 
-  const nextId = state.projects.reduce((maxId, project) => Math.max(maxId, project.id), 0) + 1;
   state.projects.push({
-    id: nextId,
-    name,
-    lastModified: timestampString()
+    id: nextProjectId(displayName),
+    displayName
   });
 
   projectNameInput.value = "";
   projectMenu.open = false;
-  markDirty(`Project "${name}" added locally. Saving in the background.`);
+  markDirty(`Project "${displayName}" added locally. Saving in the background.`);
   render();
 });
 
@@ -143,6 +141,21 @@ clearConfigButton.addEventListener("click", () => {
   clearStoredConfig();
 });
 
+clockButtons.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-clock-action]");
+
+  if (!button) {
+    return;
+  }
+
+  if (button.dataset.clockAction === "clock-out") {
+    clockOut();
+    return;
+  }
+
+  clockIn(button.dataset.projectId || "");
+});
+
 registerThemeChangeListener(() => {
   if (state.theme) {
     return;
@@ -151,60 +164,25 @@ registerThemeChangeListener(() => {
   render();
 });
 
-projectsList.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-action]");
-  const card = event.target.closest("[data-project-id]");
-  let delta;
+[projectsList, overviewChart].forEach((container) => {
+  container.addEventListener("pointermove", (event) => {
+    const bar = closestChartBar(event.target);
 
-  if (!button || !card) {
-    return;
-  }
+    if (!bar) {
+      hideChartTooltip();
+      return;
+    }
 
-  if (!state.loaded) {
-    setStatus("Load data before editing time.", true);
-    return;
-  }
+    showChartTooltip(bar, event.clientX, event.clientY);
+  });
 
-  delta = Number(button.dataset.delta || "0");
-  updateTodayBlocks(Number(card.dataset.projectId), delta);
-});
-
-projectsList.addEventListener("pointermove", (event) => {
-  const bar = closestChartBar(event.target);
-
-  if (!bar) {
+  container.addEventListener("pointerleave", () => {
     hideChartTooltip();
-    return;
-  }
+  });
 
-  showChartTooltip(bar, event.clientX, event.clientY);
-});
-
-projectsList.addEventListener("pointerleave", () => {
-  hideChartTooltip();
-});
-
-projectsList.addEventListener("pointerdown", () => {
-  hideChartTooltip();
-});
-
-overviewChart.addEventListener("pointermove", (event) => {
-  const bar = closestChartBar(event.target);
-
-  if (!bar) {
+  container.addEventListener("pointerdown", () => {
     hideChartTooltip();
-    return;
-  }
-
-  showChartTooltip(bar, event.clientX, event.clientY);
-});
-
-overviewChart.addEventListener("pointerleave", () => {
-  hideChartTooltip();
-});
-
-overviewChart.addEventListener("pointerdown", () => {
-  hideChartTooltip();
+  });
 });
 
 window.addEventListener("scroll", () => {
@@ -289,7 +267,7 @@ function persistThemePreference() {
       window.localStorage.removeItem(THEME_KEY);
     }
   } catch (error) {
-    // Ignore storage failures and continue with the in-memory preference.
+    // Keep the in-memory preference if storage is unavailable.
   }
 }
 
@@ -352,15 +330,13 @@ async function webdavFetch(name, options = {}) {
     throw new Error("A WebDAV base URL is required.");
   }
 
-  const response = await window.fetch(buildUrl(name), {
+  return window.fetch(buildUrl(name), {
     ...options,
     headers: {
       ...authHeaders(),
       ...(options.headers || {})
     }
   });
-
-  return response;
 }
 
 async function readRemoteFile(name, emptyText) {
@@ -414,9 +390,7 @@ async function loadRemoteState() {
     };
 
     if (projectsFile.missing || timesFile.missing) {
-      setStatus(
-        "Connected. Missing TSV files were initialized locally and will be created on first save."
-      );
+      setStatus("Connected. Missing TSV files were initialized locally and will be created on first save.");
     } else {
       setStatus(`Loaded ${state.projects.length} projects from WebDAV.`);
     }
@@ -511,9 +485,7 @@ async function writeRemoteFile(name, body, etag) {
   });
 
   if (response.status === 412) {
-    throw new Error(
-      `${name} changed on the server since your last load. Reload before saving again.`
-    );
+    throw new Error(`${name} changed on the server since your last load. Reload before saving again.`);
   }
 
   if (!response.ok) {
@@ -526,25 +498,20 @@ async function writeRemoteFile(name, body, etag) {
 function parseProjects(text) {
   return parseTsv(text)
     .map((row) => ({
-      id: Number(row.id),
-      name: sanitizeField(row.name || ""),
-      lastModified: row.last_modified || "never"
+      id: sanitizeId(row.id || ""),
+      displayName: sanitizeField(row.display_name || "")
     }))
-    .filter((project) => Number.isFinite(project.id) && project.name);
+    .filter((project) => project.id && project.displayName);
 }
 
 function parseTimes(text) {
   return parseTsv(text)
     .map((row) => ({
-      date: row.date || "",
-      projectId: Number(row.project_id),
-      blocks: Number(row.blocks_15m)
+      timestamp: sanitizeField(row.timestamp || ""),
+      projectId: sanitizeId(row.project_id || ""),
+      action: sanitizeField(row.action || "")
     }))
-    .filter((entry) => entry.date && Number.isFinite(entry.projectId) && Number.isFinite(entry.blocks))
-    .map((entry) => ({
-      ...entry,
-      blocks: Math.max(0, entry.blocks)
-    }));
+    .filter((entry) => entry.timestamp && entry.projectId && VALID_ACTIONS.has(entry.action) && isValidTimestamp(entry.timestamp));
 }
 
 function parseTsv(text) {
@@ -566,10 +533,12 @@ function parseTsv(text) {
 
 function serializeProjects(projects) {
   const rows = [EMPTY_PROJECTS_TSV.trimEnd()];
-  const sorted = [...projects].sort((left, right) => left.id - right.id);
+  const sorted = [...projects].sort((left, right) =>
+    left.displayName.localeCompare(right.displayName, undefined, { sensitivity: "base" })
+  );
 
   sorted.forEach((project) => {
-    rows.push([project.id, sanitizeField(project.name), project.lastModified || "never"].join("\t"));
+    rows.push([sanitizeId(project.id), sanitizeField(project.displayName)].join("\t"));
   });
 
   return `${rows.join("\n")}\n`;
@@ -577,17 +546,10 @@ function serializeProjects(projects) {
 
 function serializeTimes(times) {
   const rows = [EMPTY_TIMES_TSV.trimEnd()];
-  const sorted = [...times]
-    .filter((entry) => entry.blocks > 0)
-    .sort((left, right) => {
-      if (left.date !== right.date) {
-        return left.date.localeCompare(right.date);
-      }
-      return left.projectId - right.projectId;
-    });
+  const sorted = sortEvents(times);
 
   sorted.forEach((entry) => {
-    rows.push([entry.date, entry.projectId, Math.max(0, entry.blocks)].join("\t"));
+    rows.push([sanitizeField(entry.timestamp), sanitizeId(entry.projectId), entry.action].join("\t"));
   });
 
   return `${rows.join("\n")}\n`;
@@ -597,59 +559,259 @@ function sanitizeField(value) {
   return String(value).replace(/[\t\r\n]+/g, " ").trim();
 }
 
-function updateTodayBlocks(projectId, delta) {
-  const project = state.projects.find((entry) => entry.id === projectId);
-  const timeEntry = findOrCreateTodayEntry(projectId);
+function sanitizeId(value) {
+  return sanitizeField(value).replace(/\s+/g, "_");
+}
 
-  if (!project || !timeEntry) {
+function slugify(value) {
+  return sanitizeField(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "project";
+}
+
+function nextProjectId(displayName) {
+  const base = slugify(displayName);
+  const usedIds = new Set(state.projects.map((project) => project.id));
+  let candidate = base;
+  let index = 2;
+
+  while (usedIds.has(candidate)) {
+    candidate = `${base}_${index}`;
+    index += 1;
+  }
+
+  return candidate;
+}
+
+function clockIn(projectId) {
+  const project = state.projects.find((entry) => entry.id === projectId);
+  const status = currentStatus();
+  const timestamp = timestampString();
+
+  if (!state.loaded) {
+    setStatus("Load data before clocking in.", true);
+    return;
+  }
+
+  if (!project) {
     setStatus("Unknown project.", true);
     return;
   }
 
-  if (delta < 0 && timeEntry.blocks === 0) {
-    setStatus(`No time recorded yet for ${project.name}.`, true);
+  if (status.projectId === projectId) {
+    setStatus(`Already clocked in to ${project.displayName}.`);
     return;
   }
 
-  timeEntry.blocks = Math.max(0, timeEntry.blocks + delta);
-  project.lastModified = timestampString();
-  markDirty(`Updated ${project.name} by ${delta > 0 ? "+" : ""}${delta * 15} minutes locally.`);
+  if (status.projectId) {
+    state.times.push({
+      timestamp,
+      projectId: status.projectId,
+      action: "clock_out"
+    });
+  }
+
+  state.times.push({
+    timestamp,
+    projectId,
+    action: "clock_in"
+  });
+
+  markDirty(`Clocked in to ${project.displayName}. Saving in the background.`);
   render();
 }
 
-function findOrCreateTodayEntry(projectId) {
-  let entry = state.times.find((item) => item.projectId === projectId && item.date === state.today);
+function clockOut() {
+  const status = currentStatus();
+  const project = state.projects.find((entry) => entry.id === status.projectId);
 
-  if (!entry) {
-    entry = {
-      date: state.today,
-      projectId,
-      blocks: 0
-    };
-    state.times.push(entry);
+  if (!state.loaded) {
+    setStatus("Load data before clocking out.", true);
+    return;
   }
 
-  return entry;
+  if (!status.projectId) {
+    setStatus("No project is currently clocked in.");
+    return;
+  }
+
+  state.times.push({
+    timestamp: timestampString(),
+    projectId: status.projectId,
+    action: "clock_out"
+  });
+
+  markDirty(`Clocked out${project ? ` of ${project.displayName}` : ""}. Saving in the background.`);
+  render();
 }
 
-function formatBlocks(blocks) {
-  const totalMinutes = blocks * 15;
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
+function sortEvents(times) {
+  return [...times].sort((left, right) => {
+    const leftTime = Date.parse(left.timestamp);
+    const rightTime = Date.parse(right.timestamp);
 
-  if (!hours) {
-    return `${minutes}m`;
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    if (left.action !== right.action) {
+      return left.action === "clock_out" ? -1 : 1;
+    }
+
+    return left.projectId.localeCompare(right.projectId);
+  });
+}
+
+function currentStatus() {
+  let projectId = "";
+  let since = "";
+
+  sortEvents(state.times).forEach((entry) => {
+    if (entry.action === "clock_in") {
+      projectId = entry.projectId;
+      since = entry.timestamp;
+      return;
+    }
+
+    if (!projectId || entry.projectId === projectId) {
+      projectId = "";
+      since = "";
+    }
+  });
+
+  return {
+    projectId,
+    since
+  };
+}
+
+function buildMinuteIndex() {
+  const totalsByProject = new Map();
+  const todayByProject = new Map();
+  const minutesByDate = new Map();
+  const events = sortEvents(state.times);
+  const now = new Date();
+  let activeProjectId = "";
+  let activeStart = null;
+  let firstDate = "";
+  let lastDate = "";
+
+  events.forEach((entry) => {
+    const eventDate = new Date(entry.timestamp);
+
+    if (entry.action === "clock_in") {
+      if (activeProjectId && activeStart && eventDate > activeStart) {
+        addSession(activeProjectId, activeStart, eventDate);
+      }
+
+      activeProjectId = entry.projectId;
+      activeStart = eventDate;
+      return;
+    }
+
+    if (activeProjectId && activeStart && entry.projectId === activeProjectId && eventDate > activeStart) {
+      addSession(activeProjectId, activeStart, eventDate);
+      activeProjectId = "";
+      activeStart = null;
+    }
+  });
+
+  if (activeProjectId && activeStart && now > activeStart) {
+    addSession(activeProjectId, activeStart, now);
   }
 
-  if (!minutes) {
+  function addSession(projectId, start, end) {
+    splitSessionByDate(start, end).forEach((segment) => {
+      const minutes = Math.max(0, Math.round((segment.end - segment.start) / 60000));
+
+      if (!minutes) {
+        return;
+      }
+
+      totalsByProject.set(projectId, (totalsByProject.get(projectId) || 0) + minutes);
+
+      if (segment.date === state.today) {
+        todayByProject.set(projectId, (todayByProject.get(projectId) || 0) + minutes);
+      }
+
+      if (!minutesByDate.has(segment.date)) {
+        minutesByDate.set(segment.date, {
+          totalMinutes: 0,
+          byProject: new Map()
+        });
+      }
+
+      {
+        const day = minutesByDate.get(segment.date);
+
+        day.totalMinutes += minutes;
+        day.byProject.set(projectId, (day.byProject.get(projectId) || 0) + minutes);
+      }
+
+      if (!firstDate || segment.date < firstDate) {
+        firstDate = segment.date;
+      }
+
+      if (!lastDate || segment.date > lastDate) {
+        lastDate = segment.date;
+      }
+    });
+  }
+
+  return {
+    totalsByProject,
+    todayByProject,
+    minutesByDate,
+    firstDate,
+    lastDate
+  };
+}
+
+function splitSessionByDate(start, end) {
+  const segments = [];
+  let cursor = new Date(start);
+
+  while (cursor < end) {
+    const nextMidnight = new Date(cursor);
+    nextMidnight.setHours(24, 0, 0, 0);
+
+    {
+      const segmentEnd = nextMidnight < end ? nextMidnight : end;
+      segments.push({
+        date: dateKeyFromDate(cursor),
+        start: new Date(cursor),
+        end: new Date(segmentEnd)
+      });
+      cursor = new Date(segmentEnd);
+    }
+  }
+
+  return segments;
+}
+
+function isValidTimestamp(timestamp) {
+  return Number.isFinite(Date.parse(timestamp));
+}
+
+function formatDuration(minutes) {
+  const rounded = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(rounded / 60);
+  const remainder = rounded % 60;
+
+  if (!hours) {
+    return `${remainder}m`;
+  }
+
+  if (!remainder) {
     return `${hours}h`;
   }
 
-  return `${hours}h ${minutes}m`;
+  return `${hours}h ${remainder}m`;
 }
 
-function formatHours(blocks) {
-  const hours = blocks / 4;
+function formatHours(minutes) {
+  const hours = minutes / 60;
 
   if (Number.isInteger(hours)) {
     return String(hours);
@@ -658,9 +820,14 @@ function formatHours(blocks) {
   return hours.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 }
 
-function formatHoursLabel(blocks) {
-  const hours = blocks / 4;
-  return `${formatHours(blocks)} hour${hours === 1 ? "" : "s"}`;
+function formatDurationLabel(minutes) {
+  const hours = minutes / 60;
+
+  if (minutes < 60) {
+    return `${Math.round(minutes)} minute${Math.round(minutes) === 1 ? "" : "s"}`;
+  }
+
+  return `${formatHours(minutes)} hour${hours === 1 ? "" : "s"}`;
 }
 
 function formatPercent(ratio) {
@@ -676,18 +843,23 @@ function enumerateDates(startDate, endDate) {
 
   while (cursor <= end) {
     dates.push(dateKeyFromDate(cursor));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    cursor.setDate(cursor.getDate() + 1);
   }
 
   return dates;
 }
 
 function parseDateKey(dateKey) {
-  return new Date(`${dateKey}T00:00:00Z`);
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
 function dateKeyFromDate(date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function formatShortDate(dateKey) {
@@ -696,6 +868,10 @@ function formatShortDate(dateKey) {
 
 function formatLongDate(dateKey) {
   return longDateFormatter.format(parseDateKey(dateKey));
+}
+
+function formatTime(timestamp) {
+  return timeFormatter.format(new Date(timestamp));
 }
 
 function formatHistoryRange(history) {
@@ -718,8 +894,8 @@ function formatAxisHours(hours) {
   return `${hours.toFixed(1).replace(/\.0$/, "")}h`;
 }
 
-function buildYAxis(maxBlocks) {
-  const normalizedMaxHours = Math.max(maxBlocks / 4, 1);
+function buildYAxis(maxMinutes) {
+  const normalizedMaxHours = Math.max(maxMinutes / 60, 1);
   const rawStep = normalizedMaxHours / 3;
   const candidates = [0.5, 1, 2, 4, 6, 8, 12];
   const stepHours = candidates.find((step) => step >= rawStep) || 12;
@@ -754,9 +930,9 @@ function buildXAxisTicks(history) {
     }));
 }
 
-function historyRangeFromIndex(blocksIndex) {
-  const startDate = blocksIndex.firstDate || state.today;
-  const lastRecordedDate = blocksIndex.lastDate || state.today;
+function historyRangeFromIndex(minuteIndex) {
+  const startDate = minuteIndex.firstDate || state.today;
+  const lastRecordedDate = minuteIndex.lastDate || state.today;
   const endDate = state.today > lastRecordedDate ? state.today : lastRecordedDate;
 
   return {
@@ -765,55 +941,9 @@ function historyRangeFromIndex(blocksIndex) {
   };
 }
 
-function historyDatesFromIndex(blocksIndex) {
-  const { startDate, endDate } = historyRangeFromIndex(blocksIndex);
+function historyDatesFromIndex(minuteIndex) {
+  const { startDate, endDate } = historyRangeFromIndex(minuteIndex);
   return enumerateDates(startDate, endDate);
-}
-
-function buildBlocksIndex() {
-  const totalsByProject = new Map();
-  const todayByProject = new Map();
-  const blocksByDate = new Map();
-  let firstDate = "";
-  let lastDate = "";
-
-  state.times.forEach((entry) => {
-    totalsByProject.set(entry.projectId, (totalsByProject.get(entry.projectId) || 0) + entry.blocks);
-
-    if (entry.date === state.today) {
-      todayByProject.set(entry.projectId, (todayByProject.get(entry.projectId) || 0) + entry.blocks);
-    }
-
-    if (!blocksByDate.has(entry.date)) {
-      blocksByDate.set(entry.date, {
-        totalBlocks: 0,
-        byProject: new Map()
-      });
-    }
-
-    {
-      const day = blocksByDate.get(entry.date);
-
-      day.totalBlocks += entry.blocks;
-      day.byProject.set(entry.projectId, (day.byProject.get(entry.projectId) || 0) + entry.blocks);
-    }
-
-    if (!firstDate || entry.date < firstDate) {
-      firstDate = entry.date;
-    }
-
-    if (!lastDate || entry.date > lastDate) {
-      lastDate = entry.date;
-    }
-  });
-
-  return {
-    totalsByProject,
-    todayByProject,
-    blocksByDate,
-    firstDate,
-    lastDate
-  };
 }
 
 function projectOverviewColor(index, theme) {
@@ -824,24 +954,24 @@ function projectOverviewColor(index, theme) {
   return `hsl(${hue} ${saturation}% ${lightness}%)`;
 }
 
-function buildProjectHistory(project, blocksIndex) {
-  return historyDatesFromIndex(blocksIndex).map((date) => {
-    const day = blocksIndex.blocksByDate.get(date);
-    const blocks = day ? day.byProject.get(project.id) || 0 : 0;
+function buildProjectHistory(project, minuteIndex) {
+  return historyDatesFromIndex(minuteIndex).map((date) => {
+    const day = minuteIndex.minutesByDate.get(date);
+    const minutes = day ? day.byProject.get(project.id) || 0 : 0;
     const dateLabel = formatLongDate(date);
     const isToday = date === state.today;
 
     return {
       date,
-      blocks,
-      segments: blocks
+      minutes,
+      segments: minutes
         ? [
             {
-              blocks,
+              minutes,
               className: ["project-history-bar", isToday ? "is-today" : ""].filter(Boolean).join(" "),
               tooltipDate: dateLabel,
-              tooltipValue: formatHoursLabel(blocks),
-              ariaLabel: `${dateLabel}: ${formatHoursLabel(blocks)}`
+              tooltipValue: formatDurationLabel(minutes),
+              ariaLabel: `${dateLabel}: ${formatDurationLabel(minutes)}`
             }
           ]
         : [],
@@ -850,74 +980,74 @@ function buildProjectHistory(project, blocksIndex) {
           .filter(Boolean)
           .join(" "),
         tooltipDate: dateLabel,
-        tooltipValue: "0 hours",
-        ariaLabel: `${dateLabel}: 0 hours`
+        tooltipValue: "0 minutes",
+        ariaLabel: `${dateLabel}: 0 minutes`
       }
     };
   });
 }
 
-function buildProjectOverview(projects, blocksIndex, theme) {
+function buildProjectOverview(projects, minuteIndex, theme) {
   const items = projects
     .map((project) => ({
       id: project.id,
-      name: project.name,
-      totalBlocks: blocksIndex.totalsByProject.get(project.id) || 0
+      displayName: project.displayName,
+      totalMinutes: minuteIndex.totalsByProject.get(project.id) || 0
     }))
     .sort((left, right) => {
-      if (right.totalBlocks !== left.totalBlocks) {
-        return right.totalBlocks - left.totalBlocks;
+      if (right.totalMinutes !== left.totalMinutes) {
+        return right.totalMinutes - left.totalMinutes;
       }
 
-      return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+      return left.displayName.localeCompare(right.displayName, undefined, { sensitivity: "base" });
     });
-  const totalBlocks = items.reduce((sum, item) => sum + item.totalBlocks, 0);
+  const totalMinutes = items.reduce((sum, item) => sum + item.totalMinutes, 0);
   const activeItems = items
-    .filter((item) => item.totalBlocks > 0)
+    .filter((item) => item.totalMinutes > 0)
     .map((item, index) => ({
       ...item,
-      ratio: totalBlocks ? item.totalBlocks / totalBlocks : 0,
+      ratio: totalMinutes ? item.totalMinutes / totalMinutes : 0,
       color: projectOverviewColor(index, theme)
     }));
   const history = activeItems.length
-    ? historyDatesFromIndex(blocksIndex).map((date) => {
-        const day = blocksIndex.blocksByDate.get(date);
-        const blocks = day ? day.totalBlocks : 0;
+    ? historyDatesFromIndex(minuteIndex).map((date) => {
+        const day = minuteIndex.minutesByDate.get(date);
+        const minutes = day ? day.totalMinutes : 0;
         const dateLabel = formatLongDate(date);
         const isToday = date === state.today;
         const segments = activeItems
           .map((item) => ({
             ...item,
-            blocks: day ? day.byProject.get(item.id) || 0 : 0
+            minutes: day ? day.byProject.get(item.id) || 0 : 0
           }))
-          .filter((item) => item.blocks > 0)
+          .filter((item) => item.minutes > 0)
           .map((item) => ({
-            blocks: item.blocks,
+            minutes: item.minutes,
             className: ["project-overview-segment", isToday ? "is-today" : ""].filter(Boolean).join(" "),
             fill: item.color,
             tooltipDate: dateLabel,
             tooltipValue:
-              `${item.name}: ${formatHoursLabel(item.blocks)} ` +
-              `(${formatPercent(blocks ? item.blocks / blocks : 0)} of day, ${formatPercent(item.ratio)} overall)`,
-            ariaLabel: `${dateLabel} ${item.name}: ${formatHoursLabel(item.blocks)}`
+              `${item.displayName}: ${formatDurationLabel(item.minutes)} ` +
+              `(${formatPercent(minutes ? item.minutes / minutes : 0)} of day, ${formatPercent(item.ratio)} overall)`,
+            ariaLabel: `${dateLabel} ${item.displayName}: ${formatDurationLabel(item.minutes)}`
           }));
 
         return {
           date,
-          blocks,
+          minutes,
           segments,
           zeroBar: {
             className: ["project-overview-zero-bar", isToday ? "is-today" : ""].filter(Boolean).join(" "),
             tooltipDate: dateLabel,
-            tooltipValue: "0 hours",
-            ariaLabel: `${dateLabel}: 0 hours`
+            tooltipValue: "0 minutes",
+            ariaLabel: `${dateLabel}: 0 minutes`
           }
         };
       })
     : [];
 
   return {
-    totalBlocks,
+    totalMinutes,
     totalProjects: items.length,
     activeItems,
     inactiveCount: items.length - activeItems.length,
@@ -977,8 +1107,8 @@ function renderStackedHistoryChart(container, chartLabel, history) {
   const plotWidth = Math.max(plotRight - plotLeft, history.length);
   const slotWidth = plotWidth / history.length;
   const barWidth = Math.max(slotWidth * 0.72, Math.min(1, slotWidth));
-  const maxBlocks = Math.max(...history.map((entry) => entry.blocks), 0);
-  const yAxis = buildYAxis(maxBlocks);
+  const maxMinutes = Math.max(...history.map((entry) => entry.minutes), 0);
+  const yAxis = buildYAxis(maxMinutes);
   const xTicks = buildXAxisTicks(history);
   const svg = document.createElementNS(SVG_NS, "svg");
 
@@ -1076,7 +1206,7 @@ function renderStackedHistoryChart(container, chartLabel, history) {
     }
 
     {
-      const barHeight = Math.max(CHART_MIN_BAR_HEIGHT, ((entry.blocks / 4) / yAxis.maxHours) * plotHeight);
+      const barHeight = Math.max(CHART_MIN_BAR_HEIGHT, ((entry.minutes / 60) / yAxis.maxHours) * plotHeight);
       const barTop = plotBottom - barHeight;
       let nextY = plotBottom;
 
@@ -1085,7 +1215,7 @@ function renderStackedHistoryChart(container, chartLabel, history) {
         const segmentHeight =
           segmentIndex === segments.length - 1
             ? nextY - barTop
-            : barHeight * (segment.blocks / entry.blocks);
+            : barHeight * (segment.minutes / entry.minutes);
         const y = nextY - segmentHeight;
 
         rect.setAttribute("x", String(x));
@@ -1137,8 +1267,8 @@ function renderStackedHistoryChart(container, chartLabel, history) {
   container.appendChild(svg);
 }
 
-function renderProjectOverview(projects, blocksIndex, theme) {
-  const overview = buildProjectOverview(projects, blocksIndex, theme);
+function renderProjectOverview(projects, minuteIndex, theme) {
+  const overview = buildProjectOverview(projects, minuteIndex, theme);
 
   overviewHistoryChart.replaceChildren();
   overviewLegend.replaceChildren();
@@ -1160,9 +1290,8 @@ function renderProjectOverview(projects, blocksIndex, theme) {
     return;
   }
 
-  if (!overview.totalBlocks) {
-    overviewTotal.textContent =
-      `${overview.totalProjects} project${overview.totalProjects === 1 ? "" : "s"} loaded.`;
+  if (!overview.totalMinutes) {
+    overviewTotal.textContent = `${overview.totalProjects} project${overview.totalProjects === 1 ? "" : "s"} loaded.`;
     overviewEmpty.textContent = "No tracked hours yet.";
     overviewEmpty.classList.remove("is-hidden");
     overviewChart.classList.add("is-hidden");
@@ -1170,7 +1299,7 @@ function renderProjectOverview(projects, blocksIndex, theme) {
   }
 
   overviewTotal.textContent =
-    `Total tracked: ${formatHoursLabel(overview.totalBlocks)} across ` +
+    `Total tracked: ${formatDurationLabel(overview.totalMinutes)} across ` +
     `${overview.activeItems.length} active project${overview.activeItems.length === 1 ? "" : "s"}` +
     `${overview.inactiveCount ? `, ${overview.inactiveCount} without time` : ""}.`;
   overviewRange.textContent = formatHistoryRange(overview.history);
@@ -1190,9 +1319,9 @@ function renderProjectOverview(projects, blocksIndex, theme) {
     swatch.className = "project-overview-swatch";
     swatch.style.background = item.color;
     name.className = "project-overview-legend-name";
-    name.textContent = item.name;
+    name.textContent = item.displayName;
     value.className = "project-overview-legend-value";
-    value.textContent = `${formatHours(item.totalBlocks)}h · ${formatPercent(item.ratio)}`;
+    value.textContent = `${formatHours(item.totalMinutes)}h · ${formatPercent(item.ratio)}`;
 
     legendMain.appendChild(swatch);
     legendMain.appendChild(name);
@@ -1218,55 +1347,90 @@ function restoreViewport(viewport) {
   });
 }
 
+function renderClockButtons(projects, activeProjectId) {
+  const fragment = document.createDocumentFragment();
+  const clockOutButton = document.createElement("button");
+
+  clockButtons.replaceChildren();
+  clockOutButton.type = "button";
+  clockOutButton.textContent = "Clock Out";
+  clockOutButton.dataset.clockAction = "clock-out";
+  clockOutButton.disabled = !state.loaded || state.busy || !activeProjectId;
+  fragment.appendChild(clockOutButton);
+
+  projects.forEach((project) => {
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.textContent = project.displayName;
+    button.dataset.clockAction = "clock-in";
+    button.dataset.projectId = project.id;
+    button.disabled = !state.loaded || state.busy;
+
+    if (project.id === activeProjectId) {
+      button.classList.add("is-active");
+      button.setAttribute("aria-pressed", "true");
+    } else {
+      button.setAttribute("aria-pressed", "false");
+    }
+
+    fragment.appendChild(button);
+  });
+
+  clockButtons.appendChild(fragment);
+}
+
 function render() {
   const viewport = snapshotViewport();
   const sortedProjects = [...state.projects].sort((left, right) =>
-    left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
+    left.displayName.localeCompare(right.displayName, undefined, { sensitivity: "base" })
   );
-  const blocksIndex = buildBlocksIndex();
+  const minuteIndex = buildMinuteIndex();
+  const status = currentStatus();
+  const activeProject = state.projects.find((project) => project.id === status.projectId);
   const theme = resolvedTheme();
 
   hideChartTooltip();
-  renderProjectOverview(sortedProjects, blocksIndex, theme);
+  renderClockButtons(sortedProjects, status.projectId);
+  renderProjectOverview(sortedProjects, minuteIndex, theme);
   projectsList.innerHTML = "";
 
   sortedProjects.forEach((project) => {
     const fragment = projectTemplate.content.cloneNode(true);
-    const todayBlocks = blocksIndex.todayByProject.get(project.id) || 0;
-    const totalBlocks = blocksIndex.totalsByProject.get(project.id) || 0;
-    const history = buildProjectHistory(project, blocksIndex);
+    const todayMinutes = minuteIndex.todayByProject.get(project.id) || 0;
+    const totalMinutes = minuteIndex.totalsByProject.get(project.id) || 0;
+    const history = buildProjectHistory(project, minuteIndex);
     const historyRange = fragment.querySelector(".project-history-range");
     const historyChart = fragment.querySelector(".project-history-chart");
     const card = fragment.querySelector(".project-card");
 
-    card.dataset.projectId = String(project.id);
-    fragment.querySelector(".project-name").textContent = project.name;
-    fragment.querySelector(".project-meta").textContent = `Project #${project.id}`;
-    fragment.querySelector(".today-total").textContent = formatBlocks(todayBlocks);
-    fragment.querySelector(".project-total").textContent = `Total: ${formatBlocks(totalBlocks)}`;
-    fragment.querySelector(".project-modified").textContent = `Last modified: ${project.lastModified || "never"}`;
+    card.dataset.projectId = project.id;
+    card.classList.toggle("is-active", project.id === status.projectId);
+    fragment.querySelector(".project-name").textContent = project.displayName;
+    fragment.querySelector(".project-meta").textContent =
+      project.id === status.projectId && status.since
+        ? `Clocked in since ${formatTime(status.since)}`
+        : project.id;
+    fragment.querySelector(".today-total").textContent = formatDuration(todayMinutes);
+    fragment.querySelector(".project-total").textContent = `Total: ${formatDuration(totalMinutes)}`;
     historyRange.textContent = formatHistoryRange(history);
 
-    fragment.querySelector(".increment").dataset.action = "adjust";
-    fragment.querySelector(".increment").dataset.delta = "1";
-    fragment.querySelector(".decrement").dataset.action = "adjust";
-    fragment.querySelector(".decrement").dataset.delta = "-1";
-
     projectsList.appendChild(fragment);
-    renderStackedHistoryChart(historyChart, `${project.name} daily hours`, history);
+    renderStackedHistoryChart(historyChart, `${project.displayName} daily hours`, history);
   });
 
   projectsEmpty.classList.toggle("is-hidden", sortedProjects.length > 0);
-  todayLabel.textContent = state.loaded ? state.today : "No data loaded";
+  todayLabel.textContent = state.loaded
+    ? activeProject
+      ? `Clocked in: ${activeProject.displayName}`
+      : "Clocked out"
+    : "No data loaded";
   configSummaryText.textContent = buildConfigSummary();
   projectNameInput.disabled = !state.loaded || state.busy;
   loadButton.textContent = state.loaded ? "Reload data" : "Load data";
   themeToggleButton.textContent = theme === "dark" ? "Light mode" : "Dark mode";
   themeToggleButton.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
-  themeToggleButton.setAttribute(
-    "aria-label",
-    theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
-  );
+  themeToggleButton.setAttribute("aria-label", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
   saveButton.disabled =
     state.busy ||
     !state.loaded ||
@@ -1307,12 +1471,7 @@ function setBusy(isBusy) {
 }
 
 function todayString() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  return dateKeyFromDate(new Date());
 }
 
 function timestampString() {
@@ -1323,6 +1482,11 @@ function timestampString() {
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
   const seconds = String(date.getSeconds()).padStart(2, "0");
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffset = Math.abs(offsetMinutes);
+  const offsetHours = String(Math.floor(absoluteOffset / 60)).padStart(2, "0");
+  const offsetRemainder = String(absoluteOffset % 60).padStart(2, "0");
 
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetRemainder}`;
 }
