@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /root
 
-ARG NODE_VERSION=24.14.0
+ARG NODE_VERSION=24.15.0
 RUN curl -O https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz \
         && tar xf node-v${NODE_VERSION}-linux-x64.tar.xz \
         && mv node-v${NODE_VERSION}-linux-x64 node \
@@ -17,4 +17,5 @@ RUN curl -O https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux
 ENV PATH="/root/node/bin:${PATH}"
 RUN echo 'PATH="$HOME/node/bin:${PATH}"' >> .profile
 
-RUN npm install -g @openai/codex
+#RUN npm install -g @openai/codex
+RUN npm install -g @mariozechner/pi-coding-agent
