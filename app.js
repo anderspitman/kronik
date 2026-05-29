@@ -696,10 +696,13 @@ function currentStatus() {
 function buildMinuteIndex() {
   const totalsByProject = new Map();
   const todayByProject = new Map();
+  const weekByProject = new Map();
   const minutesByDate = new Map();
   const sessionSegments = [];
   const events = sortEvents(state.times);
   const now = new Date();
+  const currentWeek = weekRangeFromDateKey(state.today);
+  const weekThroughDate = state.today < currentWeek.endDate ? state.today : currentWeek.endDate;
   let activeProjectId = "";
   let activeStart = null;
   let firstDate = "";
@@ -750,6 +753,10 @@ function buildMinuteIndex() {
         todayByProject.set(projectId, (todayByProject.get(projectId) || 0) + minutes);
       }
 
+      if (segment.date >= currentWeek.startDate && segment.date <= weekThroughDate) {
+        weekByProject.set(projectId, (weekByProject.get(projectId) || 0) + minutes);
+      }
+
       if (!minutesByDate.has(segment.date)) {
         minutesByDate.set(segment.date, {
           totalMinutes: 0,
@@ -777,6 +784,9 @@ function buildMinuteIndex() {
   return {
     totalsByProject,
     todayByProject,
+    weekByProject,
+    weekStartDate: currentWeek.startDate,
+    weekEndDate: currentWeek.endDate,
     minutesByDate,
     sessionSegments,
     firstDate,
@@ -868,6 +878,27 @@ function enumerateDates(startDate, endDate) {
 function parseDateKey(dateKey) {
   const [year, month, day] = dateKey.split("-").map(Number);
   return new Date(year, month - 1, day);
+}
+
+function weekRangeFromDateKey(dateKey) {
+  const start = parseDateKey(dateKey);
+
+  start.setDate(start.getDate() - start.getDay());
+
+  {
+    const end = new Date(start);
+
+    end.setDate(end.getDate() + 6);
+
+    return {
+      startDate: dateKeyFromDate(start),
+      endDate: dateKeyFromDate(end)
+    };
+  }
+}
+
+function formatWeekRange(startDate, endDate) {
+  return `Sunday-Saturday: ${formatShortDate(startDate)} - ${formatShortDate(endDate)}`;
 }
 
 function dateKeyFromDate(date) {
@@ -1549,6 +1580,9 @@ function renderClockButtons(projects, activeProjectId) {
 
 function render() {
   const viewport = snapshotViewport();
+
+  state.today = todayString();
+
   const sortedProjects = [...state.projects].sort((left, right) =>
     left.displayName.localeCompare(right.displayName, undefined, { sensitivity: "base" })
   );
@@ -1565,10 +1599,12 @@ function render() {
   sortedProjects.forEach((project) => {
     const fragment = projectTemplate.content.cloneNode(true);
     const todayMinutes = minuteIndex.todayByProject.get(project.id) || 0;
+    const weekMinutes = minuteIndex.weekByProject.get(project.id) || 0;
     const totalMinutes = minuteIndex.totalsByProject.get(project.id) || 0;
     const history = buildProjectHistory(project, minuteIndex);
     const historyRange = fragment.querySelector(".project-history-range");
     const historyChart = fragment.querySelector(".project-history-chart");
+    const weekTotal = fragment.querySelector(".week-total");
     const card = fragment.querySelector(".project-card");
 
     card.dataset.projectId = project.id;
@@ -1579,7 +1615,13 @@ function render() {
         ? `Clocked in since ${formatTime(status.since)}`
         : project.id;
     fragment.querySelector(".today-total").textContent = formatDuration(todayMinutes);
+    weekTotal.textContent = formatDuration(weekMinutes);
+    weekTotal.title = `${formatDurationLabel(weekMinutes)} worked this week, Sunday through Saturday`;
     fragment.querySelector(".project-total").textContent = `Total: ${formatDuration(totalMinutes)}`;
+    fragment.querySelector(".project-week-range").textContent = formatWeekRange(
+      minuteIndex.weekStartDate,
+      minuteIndex.weekEndDate
+    );
     historyRange.textContent = formatHistoryRange(history);
 
     projectsList.appendChild(fragment);
