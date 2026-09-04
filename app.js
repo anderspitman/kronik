@@ -844,6 +844,7 @@ function currentStatus() {
 }
 
 function buildMinuteIndex() {
+  const allTimeByProject = new Map();
   const totalsByProject = new Map();
   const todayByProject = new Map();
   const weekByProject = new Map();
@@ -885,7 +886,17 @@ function buildMinuteIndex() {
     splitSessionByDate(start, end).forEach((segment) => {
       const minutes = Math.max(0, Math.round((segment.end - segment.start) / 60000));
 
-      if (!minutes || segment.date < selectedWeek.startDate || segment.date > selectedWeek.endDate) {
+      if (!minutes) {
+        return;
+      }
+
+      allTimeByProject.set(projectId, (allTimeByProject.get(projectId) || 0) + minutes);
+
+      if (segment.date === state.today) {
+        todayByProject.set(projectId, (todayByProject.get(projectId) || 0) + minutes);
+      }
+
+      if (segment.date < selectedWeek.startDate || segment.date > selectedWeek.endDate) {
         return;
       }
 
@@ -897,10 +908,6 @@ function buildMinuteIndex() {
         minutes
       });
       totalsByProject.set(projectId, (totalsByProject.get(projectId) || 0) + minutes);
-
-      if (segment.date === state.today) {
-        todayByProject.set(projectId, (todayByProject.get(projectId) || 0) + minutes);
-      }
 
       if (segment.date >= selectedWeek.startDate && segment.date <= selectedWeek.endDate) {
         weekByProject.set(projectId, (weekByProject.get(projectId) || 0) + minutes);
@@ -931,6 +938,7 @@ function buildMinuteIndex() {
   }
 
   return {
+    allTimeByProject,
     totalsByProject,
     todayByProject,
     weekByProject,
@@ -1826,7 +1834,9 @@ function render() {
 
   sortedProjects.forEach((project) => {
     const fragment = projectTemplate.content.cloneNode(true);
+    const todayMinutes = minuteIndex.todayByProject.get(project.id) || 0;
     const weekMinutes = minuteIndex.weekByProject.get(project.id) || 0;
+    const totalMinutes = minuteIndex.allTimeByProject.get(project.id) || 0;
     const history = buildProjectHistory(project, minuteIndex);
     const historyRange = fragment.querySelector(".project-history-range");
     const historyChart = fragment.querySelector(".project-history-chart");
@@ -1839,8 +1849,11 @@ function render() {
       project.id === status.projectId && status.since
         ? `Clocked in since ${formatTime(status.since)}`
         : project.id;
+    fragment.querySelector(".today-total").textContent = formatDuration(todayMinutes);
+    fragment.querySelector(".today-total").title = `${formatDurationLabel(todayMinutes)} worked today`;
     fragment.querySelector(".week-total").textContent = formatDuration(weekMinutes);
     fragment.querySelector(".week-total").title = `${formatDurationLabel(weekMinutes)} worked during the displayed week`;
+    fragment.querySelector(".project-total").textContent = `Total: ${formatDuration(totalMinutes)}`;
     fragment.querySelector(".project-week-range").textContent = formatWeekRange(
       minuteIndex.weekStartDate,
       minuteIndex.weekEndDate

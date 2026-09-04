@@ -150,6 +150,7 @@ input {
 h1,
 h2,
 h3,
+.today-total,
 .week-total {
   font-family: "Trebuchet MS", "Gill Sans", sans-serif;
 }
@@ -715,6 +716,7 @@ button:disabled {
   color: var(--muted);
 }
 
+.today-total,
 .week-total {
   min-width: 92px;
   text-align: center;
