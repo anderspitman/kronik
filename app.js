@@ -1,5 +1,6 @@
 const PROJECTS_FILE = "projects.tsv";
-const TIMES_FILE = "times.tsv";
+const TIMES_DIRECTORY = "times";
+const WEEK_FILE_PATTERN = /^(\d{4}-\d{2}-\d{2})\.tsv$/;
 const CONFIG_KEY = "kronik-webdav-config";
 const THEME_KEY = "kronik-theme";
 const EMPTY_PROJECTS_TSV = "id\tdisplay_name\n";
@@ -32,7 +33,9 @@ const state = {
   times: [],
   remote: defaultRemoteState(),
   today: todayString(),
-  dirty: false,
+  selectedWeek: weekRangeFromDateKey(todayString()).startDate,
+  dirtyProjects: false,
+  dirtyWeeks: new Set(),
   loaded: false,
   busy: false,
   saving: false,
@@ -41,6 +44,9 @@ const state = {
 
 const statusText = document.querySelector("#status-text");
 const todayLabel = document.querySelector("#today-label");
+const selectedWeekLabel = document.querySelector("#selected-week-label");
+const previousWeekButton = document.querySelector("#previous-week-button");
+const nextWeekButton = document.querySelector("#next-week-button");
 const overviewTotal = document.querySelector("#overview-total");
 const overviewEmpty = document.querySelector("#overview-empty");
 const overviewChart = document.querySelector("#overview-chart");
@@ -83,7 +89,7 @@ window.setInterval(() => {
 }, 60000);
 
 window.addEventListener("beforeunload", (event) => {
-  if (!state.dirty) {
+  if (!hasDirtyState()) {
     return;
   }
 
@@ -100,6 +106,14 @@ loadButton.addEventListener("click", async () => {
 
 saveButton.addEventListener("click", () => {
   queueSave("Saving changes in the background.");
+});
+
+previousWeekButton.addEventListener("click", () => {
+  selectAdjacentWeek(-1);
+});
+
+nextWeekButton.addEventListener("click", () => {
+  selectAdjacentWeek(1);
 });
 
 themeToggleButton.addEventListener("click", () => {
@@ -132,6 +146,7 @@ projectForm.addEventListener("submit", (event) => {
     id: nextProjectId(displayName),
     displayName
   });
+  state.dirtyProjects = true;
 
   projectNameInput.value = "";
   projectMenu.open = false;
@@ -246,10 +261,10 @@ function defaultConfig() {
 function defaultRemoteState() {
   return {
     projectsEtag: "",
-    timesEtag: "",
+    weekEtags: new Map(),
     loadedAt: "",
     projectsMissing: false,
-    timesMissing: false
+    timesDirectoryMissing: false
   };
 }
 
@@ -329,7 +344,14 @@ function authHeaders() {
 }
 
 function buildUrl(name) {
-  return `${state.config.baseUrl}/${encodeURIComponent(name)}`;
+  const path = String(name);
+  const encodedPath = path
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const trailingSlash = path.endsWith("/") ? "/" : "";
+  return encodedPath ? `${state.config.baseUrl}/${encodedPath}${trailingSlash}` : `${state.config.baseUrl}/`;
 }
 
 async function webdavFetch(name, options = {}) {
@@ -373,33 +395,102 @@ async function readRemoteFile(name, emptyText) {
   };
 }
 
+async function listWeeklyFiles() {
+  const response = await webdavFetch(`${TIMES_DIRECTORY}/`, {
+    method: "PROPFIND",
+    cache: "no-store",
+    headers: {
+      Depth: "1",
+      "Content-Type": "application/xml; charset=utf-8"
+    },
+    body: '<?xml version="1.0"?><propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>'
+  });
+
+  if (response.status === 404) {
+    return { names: [], missing: true };
+  }
+
+  if (!response.ok && response.status !== 207) {
+    throw new Error(`WebDAV directory listing failed with ${response.status}. The server must allow PROPFIND.`);
+  }
+
+  const documentNode = new DOMParser().parseFromString(await response.text(), "application/xml");
+
+  if (documentNode.querySelector("parsererror")) {
+    throw new Error("WebDAV directory listing returned invalid XML.");
+  }
+
+  const names = [...documentNode.getElementsByTagNameNS("DAV:", "href")]
+    .map((node) => {
+      try {
+        const pathname = new URL(node.textContent || "", state.config.baseUrl).pathname;
+        return decodeURIComponent(pathname.split("/").filter(Boolean).pop() || "");
+      } catch (error) {
+        return "";
+      }
+    })
+    .filter((name) => isWeeklyFileName(name));
+
+  return { names: [...new Set(names)].sort(), missing: false };
+}
+
+function isWeeklyFileName(name) {
+  const match = WEEK_FILE_PATTERN.exec(name);
+
+  if (!match) {
+    return false;
+  }
+
+  const date = parseDateKey(match[1]);
+  return dateKeyFromDate(date) === match[1] && date.getDay() === 1;
+}
+
 async function loadRemoteState() {
   setBusy(true);
-  setStatus("Loading TSV files from WebDAV.");
+  setStatus("Loading weekly TSV files from WebDAV.");
 
   try {
-    const [projectsFile, timesFile] = await Promise.all([
+    const [projectsFile, weeklyListing] = await Promise.all([
       readRemoteFile(PROJECTS_FILE, EMPTY_PROJECTS_TSV),
-      readRemoteFile(TIMES_FILE, EMPTY_TIMES_TSV)
+      listWeeklyFiles()
     ]);
+    const weeklyFiles = await Promise.all(
+      weeklyListing.names.map(async (name) => ({
+        name,
+        ...(await readRemoteFile(`${TIMES_DIRECTORY}/${name}`, EMPTY_TIMES_TSV))
+      }))
+    );
 
     state.projects = parseProjects(projectsFile.text);
-    state.times = parseTimes(timesFile.text);
+    state.times = weeklyFiles.flatMap((file) => parseTimes(file.text, file.name.slice(0, 10)));
     state.today = todayString();
     state.loaded = true;
-    state.dirty = false;
+    state.dirtyProjects = false;
+    state.dirtyWeeks.clear();
     state.remote = {
       projectsEtag: projectsFile.etag,
-      timesEtag: timesFile.etag,
+      weekEtags: new Map(weeklyFiles.map((file) => [file.name.slice(0, 10), file.etag])),
       loadedAt: timestampString(),
       projectsMissing: projectsFile.missing,
-      timesMissing: timesFile.missing
+      timesDirectoryMissing: weeklyListing.missing
     };
 
-    if (projectsFile.missing || timesFile.missing) {
-      setStatus("Connected. Missing TSV files were initialized locally and will be created on first save.");
+    const currentWeek = weekRangeFromDateKey(state.today).startDate;
+    const weekKeys = availableWeekKeys();
+    state.selectedWeek = weekKeys.includes(currentWeek) ? currentWeek : weekKeys.at(-1) || currentWeek;
+
+    if (projectsFile.missing || weeklyListing.missing) {
+      const missingItems = [
+        projectsFile.missing ? PROJECTS_FILE : "",
+        weeklyListing.missing ? `${TIMES_DIRECTORY}/` : ""
+      ].filter(Boolean);
+      setStatus(
+        `Connected. ${missingItems.join(" and ")} will be created on the first save.`
+      );
     } else {
-      setStatus(`Loaded ${state.projects.length} projects from WebDAV.`);
+      setStatus(
+        `Loaded ${state.projects.length} projects and ${weeklyFiles.length} week${weeklyFiles.length === 1 ? "" : "s"} from WebDAV.`
+      );
     }
 
     render();
@@ -422,20 +513,56 @@ async function saveRemoteState() {
   render();
   setStatus("Uploading TSV files to WebDAV.");
 
+  const saveProjects = state.dirtyProjects || state.remote.projectsMissing;
+  const weekStarts = [...state.dirtyWeeks];
+  const projectsBody = saveProjects ? serializeProjects(state.projects) : "";
+  const weekBodies = new Map(
+    weekStarts.map((weekStart) => [
+      weekStart,
+      serializeTimes(state.times.filter((entry) => entry.storageWeek === weekStart))
+    ])
+  );
+
   try {
-    const [projectsResponse, timesResponse] = await Promise.all([
-      writeRemoteFile(PROJECTS_FILE, serializeProjects(state.projects), state.remote.projectsEtag),
-      writeRemoteFile(TIMES_FILE, serializeTimes(state.times), state.remote.timesEtag)
+    if (state.remote.timesDirectoryMissing) {
+      await createRemoteDirectory(TIMES_DIRECTORY);
+      state.remote.timesDirectoryMissing = false;
+    }
+
+    const projectsPromise = saveProjects
+      ? writeRemoteFile(PROJECTS_FILE, projectsBody, state.remote.projectsEtag, state.remote.projectsMissing)
+      : Promise.resolve(null);
+    const weekPromises = weekStarts.map(async (weekStart) => ({
+      weekStart,
+      response: await writeRemoteFile(
+        `${TIMES_DIRECTORY}/${weekStart}.tsv`,
+        weekBodies.get(weekStart),
+        state.remote.weekEtags.get(weekStart) || "",
+        !state.remote.weekEtags.has(weekStart)
+      )
+    }));
+    const [projectsResponse, weekResponses] = await Promise.all([
+      projectsPromise,
+      Promise.all(weekPromises)
     ]);
 
-    state.remote.projectsEtag = projectsResponse.headers.get("etag") || "";
-    state.remote.timesEtag = timesResponse.headers.get("etag") || "";
-    state.remote.projectsMissing = false;
-    state.remote.timesMissing = false;
-    state.remote.loadedAt = timestampString();
-    state.dirty = false;
-    state.pendingSave = false;
+    if (projectsResponse) {
+      state.remote.projectsEtag = projectsResponse.headers.get("etag") || "";
+      state.remote.projectsMissing = false;
+      if (serializeProjects(state.projects) === projectsBody) {
+        state.dirtyProjects = false;
+      }
+    }
 
+    weekResponses.forEach(({ weekStart, response }) => {
+      state.remote.weekEtags.set(weekStart, response.headers.get("etag") || "");
+      const currentBody = serializeTimes(state.times.filter((entry) => entry.storageWeek === weekStart));
+      if (currentBody === weekBodies.get(weekStart)) {
+        state.dirtyWeeks.delete(weekStart);
+      }
+    });
+
+    state.remote.loadedAt = timestampString();
     setStatus("Changes uploaded.");
     render();
   } catch (error) {
@@ -457,7 +584,7 @@ function queueSave(message) {
     return;
   }
 
-  if (!state.dirty && !state.remote.projectsMissing && !state.remote.timesMissing) {
+  if (!hasDirtyState() && !state.remote.projectsMissing && !state.remote.timesDirectoryMissing) {
     render();
     return;
   }
@@ -475,7 +602,15 @@ function queueSave(message) {
   void saveRemoteState();
 }
 
-async function writeRemoteFile(name, body, etag) {
+async function createRemoteDirectory(name) {
+  const response = await webdavFetch(name, { method: "MKCOL" });
+
+  if (!response.ok) {
+    throw new Error(`${name}/ creation failed with ${response.status}. The server must allow MKCOL.`);
+  }
+}
+
+async function writeRemoteFile(name, body, etag, isMissing = false) {
   const headers = {
     "Content-Type": "text/tab-separated-values; charset=utf-8"
   };
@@ -483,6 +618,8 @@ async function writeRemoteFile(name, body, etag) {
 
   if (etag) {
     headers["If-Match"] = etag;
+  } else if (isMissing) {
+    headers["If-None-Match"] = "*";
   }
 
   response = await webdavFetch(name, {
@@ -511,12 +648,13 @@ function parseProjects(text) {
     .filter((project) => project.id && project.displayName);
 }
 
-function parseTimes(text) {
+function parseTimes(text, storageWeek = "") {
   return parseTsv(text)
     .map((row) => ({
       timestamp: sanitizeField(row.timestamp || ""),
       projectId: sanitizeId(row.project_id || ""),
-      action: sanitizeField(row.action || "")
+      action: sanitizeField(row.action || ""),
+      storageWeek
     }))
     .filter((entry) => entry.timestamp && entry.projectId && VALID_ACTIONS.has(entry.action) && isValidTimestamp(entry.timestamp));
 }
@@ -595,6 +733,7 @@ function clockIn(projectId) {
   const project = state.projects.find((entry) => entry.id === projectId);
   const status = currentStatus();
   const timestamp = timestampString();
+  const storageWeek = weekRangeFromDateKey(dateKeyFromDate(new Date(timestamp))).startDate;
 
   if (!state.loaded) {
     setStatus("Load data before clocking in.", true);
@@ -615,16 +754,20 @@ function clockIn(projectId) {
     state.times.push({
       timestamp,
       projectId: status.projectId,
-      action: "clock_out"
+      action: "clock_out",
+      storageWeek
     });
   }
 
   state.times.push({
     timestamp,
     projectId,
-    action: "clock_in"
+    action: "clock_in",
+    storageWeek
   });
 
+  state.selectedWeek = storageWeek;
+  state.dirtyWeeks.add(storageWeek);
   markDirty(`Clocked in to ${project.displayName}. Saving in the background.`);
   render();
 }
@@ -643,11 +786,18 @@ function clockOut() {
     return;
   }
 
+  const timestamp = timestampString();
+  const storageWeek = weekRangeFromDateKey(dateKeyFromDate(new Date(timestamp))).startDate;
+
   state.times.push({
-    timestamp: timestampString(),
+    timestamp,
     projectId: status.projectId,
-    action: "clock_out"
+    action: "clock_out",
+    storageWeek
   });
+
+  state.selectedWeek = storageWeek;
+  state.dirtyWeeks.add(storageWeek);
 
   markDirty(`Clocked out${project ? ` of ${project.displayName}` : ""}. Saving in the background.`);
   render();
@@ -701,8 +851,7 @@ function buildMinuteIndex() {
   const sessionSegments = [];
   const events = sortEvents(state.times);
   const now = new Date();
-  const currentWeek = weekRangeFromDateKey(state.today);
-  const weekThroughDate = state.today < currentWeek.endDate ? state.today : currentWeek.endDate;
+  const selectedWeek = weekRangeFromDateKey(state.selectedWeek);
   let activeProjectId = "";
   let activeStart = null;
   let firstDate = "";
@@ -736,7 +885,7 @@ function buildMinuteIndex() {
     splitSessionByDate(start, end).forEach((segment) => {
       const minutes = Math.max(0, Math.round((segment.end - segment.start) / 60000));
 
-      if (!minutes) {
+      if (!minutes || segment.date < selectedWeek.startDate || segment.date > selectedWeek.endDate) {
         return;
       }
 
@@ -753,7 +902,7 @@ function buildMinuteIndex() {
         todayByProject.set(projectId, (todayByProject.get(projectId) || 0) + minutes);
       }
 
-      if (segment.date >= currentWeek.startDate && segment.date <= weekThroughDate) {
+      if (segment.date >= selectedWeek.startDate && segment.date <= selectedWeek.endDate) {
         weekByProject.set(projectId, (weekByProject.get(projectId) || 0) + minutes);
       }
 
@@ -785,8 +934,8 @@ function buildMinuteIndex() {
     totalsByProject,
     todayByProject,
     weekByProject,
-    weekStartDate: currentWeek.startDate,
-    weekEndDate: currentWeek.endDate,
+    weekStartDate: selectedWeek.startDate,
+    weekEndDate: selectedWeek.endDate,
     minutesByDate,
     sessionSegments,
     firstDate,
@@ -817,7 +966,7 @@ function splitSessionByDate(start, end) {
 }
 
 function isValidTimestamp(timestamp) {
-  return Number.isFinite(Date.parse(timestamp));
+  return Number.isFinite(Date.parse(timestamp)) && /(Z|[+-]\d{2}:\d{2})$/.test(timestamp);
 }
 
 function formatDuration(minutes) {
@@ -883,7 +1032,7 @@ function parseDateKey(dateKey) {
 function weekRangeFromDateKey(dateKey) {
   const start = parseDateKey(dateKey);
 
-  start.setDate(start.getDate() - start.getDay());
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
 
   {
     const end = new Date(start);
@@ -898,7 +1047,82 @@ function weekRangeFromDateKey(dateKey) {
 }
 
 function formatWeekRange(startDate, endDate) {
-  return `Sunday-Saturday: ${formatShortDate(startDate)} - ${formatShortDate(endDate)}`;
+  return `Monday-Sunday: ${formatShortDate(startDate)} - ${formatShortDate(endDate)}`;
+}
+
+function availableWeekKeys() {
+  const weekKeys = new Set();
+  const events = sortEvents(state.times);
+  let activeProjectId = "";
+  let activeStart = null;
+
+  events.forEach((entry) => {
+    const eventDate = new Date(entry.timestamp);
+
+    if (entry.action === "clock_in") {
+      if (activeProjectId && activeStart && eventDate > activeStart) {
+        addRange(activeStart, eventDate);
+      }
+      activeProjectId = entry.projectId;
+      activeStart = eventDate;
+      return;
+    }
+
+    if (activeProjectId && activeStart && entry.projectId === activeProjectId && eventDate > activeStart) {
+      addRange(activeStart, eventDate);
+      activeProjectId = "";
+      activeStart = null;
+    }
+  });
+
+  if (activeProjectId && activeStart && new Date() > activeStart) {
+    addRange(activeStart, new Date());
+  }
+
+  function addRange(start, end) {
+    const finalInstant = new Date(end.getTime() - 1);
+    const firstWeek = weekRangeFromDateKey(dateKeyFromDate(start)).startDate;
+    const lastWeek = weekRangeFromDateKey(dateKeyFromDate(finalInstant)).startDate;
+    const cursor = parseDateKey(firstWeek);
+    const finalWeek = parseDateKey(lastWeek);
+
+    while (cursor <= finalWeek) {
+      weekKeys.add(dateKeyFromDate(cursor));
+      cursor.setDate(cursor.getDate() + 7);
+    }
+  }
+
+  return [...weekKeys].sort();
+}
+
+function selectAdjacentWeek(direction) {
+  if (!state.loaded || state.busy) {
+    return;
+  }
+
+  const weekKeys = availableWeekKeys();
+  const adjacent = direction < 0
+    ? [...weekKeys].reverse().find((weekStart) => weekStart < state.selectedWeek)
+    : weekKeys.find((weekStart) => weekStart > state.selectedWeek);
+
+  if (!adjacent) {
+    return;
+  }
+
+  state.selectedWeek = adjacent;
+  render();
+}
+
+function adjacentWeeks() {
+  const weekKeys = availableWeekKeys();
+  return {
+    previous: [...weekKeys].reverse().find((weekStart) => weekStart < state.selectedWeek) || "",
+    next: weekKeys.find((weekStart) => weekStart > state.selectedWeek) || ""
+  };
+}
+
+function formatSelectedWeekLabel(startDate, endDate) {
+  return `${formatLongDate(startDate)} – ${formatLongDate(endDate)}`;
 }
 
 function dateKeyFromDate(date) {
@@ -978,13 +1202,9 @@ function buildXAxisTicks(history) {
 }
 
 function historyRangeFromIndex(minuteIndex) {
-  const startDate = minuteIndex.firstDate || state.today;
-  const lastRecordedDate = minuteIndex.lastDate || state.today;
-  const endDate = state.today > lastRecordedDate ? state.today : lastRecordedDate;
-
   return {
-    startDate,
-    endDate
+    startDate: minuteIndex.weekStartDate,
+    endDate: minuteIndex.weekEndDate
   };
 }
 
@@ -1590,21 +1810,26 @@ function render() {
   const status = currentStatus();
   const activeProject = state.projects.find((project) => project.id === status.projectId);
   const theme = resolvedTheme();
+  const weekNavigation = adjacentWeeks();
 
   hideChartTooltip();
+  selectedWeekLabel.textContent = state.loaded
+    ? formatSelectedWeekLabel(minuteIndex.weekStartDate, minuteIndex.weekEndDate)
+    : "No week loaded";
+  previousWeekButton.disabled = !state.loaded || state.busy || !weekNavigation.previous;
+  nextWeekButton.disabled = !state.loaded || state.busy || !weekNavigation.next;
+  previousWeekButton.title = weekNavigation.previous ? `Show week of ${formatLongDate(weekNavigation.previous)}` : "";
+  nextWeekButton.title = weekNavigation.next ? `Show week of ${formatLongDate(weekNavigation.next)}` : "";
   renderClockButtons(sortedProjects, status.projectId);
   renderProjectOverview(sortedProjects, minuteIndex, theme);
   projectsList.innerHTML = "";
 
   sortedProjects.forEach((project) => {
     const fragment = projectTemplate.content.cloneNode(true);
-    const todayMinutes = minuteIndex.todayByProject.get(project.id) || 0;
     const weekMinutes = minuteIndex.weekByProject.get(project.id) || 0;
-    const totalMinutes = minuteIndex.totalsByProject.get(project.id) || 0;
     const history = buildProjectHistory(project, minuteIndex);
     const historyRange = fragment.querySelector(".project-history-range");
     const historyChart = fragment.querySelector(".project-history-chart");
-    const weekTotal = fragment.querySelector(".week-total");
     const card = fragment.querySelector(".project-card");
 
     card.dataset.projectId = project.id;
@@ -1614,10 +1839,8 @@ function render() {
       project.id === status.projectId && status.since
         ? `Clocked in since ${formatTime(status.since)}`
         : project.id;
-    fragment.querySelector(".today-total").textContent = formatDuration(todayMinutes);
-    weekTotal.textContent = formatDuration(weekMinutes);
-    weekTotal.title = `${formatDurationLabel(weekMinutes)} worked this week, Sunday through Saturday`;
-    fragment.querySelector(".project-total").textContent = `Total: ${formatDuration(totalMinutes)}`;
+    fragment.querySelector(".week-total").textContent = formatDuration(weekMinutes);
+    fragment.querySelector(".week-total").title = `${formatDurationLabel(weekMinutes)} worked during the displayed week`;
     fragment.querySelector(".project-week-range").textContent = formatWeekRange(
       minuteIndex.weekStartDate,
       minuteIndex.weekEndDate
@@ -1644,7 +1867,7 @@ function render() {
     state.busy ||
     !state.loaded ||
     state.saving ||
-    (!state.dirty && !state.remote.projectsMissing && !state.remote.timesMissing);
+    (!hasDirtyState() && !state.remote.projectsMissing && !state.remote.timesDirectoryMissing);
   saveButton.textContent = state.saving ? "Saving..." : "Save now";
   restoreViewport(viewport);
 }
@@ -1662,9 +1885,12 @@ function buildConfigSummary() {
 }
 
 function markDirty(message) {
-  state.dirty = true;
   setStatus(message);
   queueSave();
+}
+
+function hasDirtyState() {
+  return state.dirtyProjects || state.dirtyWeeks.size > 0;
 }
 
 function setStatus(message, isError = false) {
@@ -1675,7 +1901,7 @@ function setStatus(message, isError = false) {
 function setBusy(isBusy) {
   state.busy = isBusy;
   loadButton.disabled = isBusy;
-  saveButton.disabled = isBusy || !state.loaded || !state.dirty;
+  saveButton.disabled = isBusy || !state.loaded || !hasDirtyState();
   render();
 }
 

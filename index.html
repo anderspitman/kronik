@@ -78,6 +78,15 @@
       <div id="clock-buttons" class="clock-buttons" aria-label="Time card controls"></div>
     </section>
 
+    <section id="week-navigation" class="week-navigation" aria-label="Week navigation">
+      <button id="previous-week-button" type="button" aria-label="Show previous week">← Previous week</button>
+      <div class="week-navigation-current" aria-live="polite">
+        <p class="eyebrow">Displayed week</p>
+        <h1 id="selected-week-label">No week loaded</h1>
+      </div>
+      <button id="next-week-button" type="button" aria-label="Show next week">Next week →</button>
+    </section>
+
     <section class="panel">
       <div class="panel-header">
         <div>
@@ -126,17 +135,12 @@
         </div>
         <div class="project-period-totals">
           <div class="project-period-total">
-            <div class="today-total"></div>
-            <div class="project-period-label">Today</div>
-          </div>
-          <div class="project-period-total">
             <div class="week-total"></div>
-            <div class="project-period-label">This week</div>
+            <div class="project-period-label">Week total</div>
           </div>
         </div>
       </div>
       <div class="project-footer">
-        <span class="project-total"></span>
         <span class="project-week-range"></span>
       </div>
       <div class="project-history">
