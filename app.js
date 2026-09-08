@@ -8,9 +8,9 @@ const EMPTY_TIMES_TSV = "timestamp\tproject_id\taction\n";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CHART_HEIGHT = 96;
 const CHART_MARGIN_TOP = 8;
-const CHART_MARGIN_RIGHT = 36;
+const CHART_MARGIN_RIGHT = 52;
 const CHART_MARGIN_BOTTOM = 28;
-const CHART_MARGIN_LEFT = 36;
+const CHART_MARGIN_LEFT = 52;
 const CHART_MIN_WIDTH = 240;
 const CHART_MIN_BAR_HEIGHT = 2;
 const CHART_TICK_SIZE = 4;
@@ -993,24 +993,21 @@ function formatDuration(minutes) {
   return `${hours}h ${remainder}m`;
 }
 
-function formatHours(minutes) {
-  const hours = minutes / 60;
-
-  if (Number.isInteger(hours)) {
-    return String(hours);
-  }
-
-  return hours.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-}
-
 function formatDurationLabel(minutes) {
-  const hours = minutes / 60;
+  const rounded = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(rounded / 60);
+  const remainder = rounded % 60;
+  const parts = [];
 
-  if (minutes < 60) {
-    return `${Math.round(minutes)} minute${Math.round(minutes) === 1 ? "" : "s"}`;
+  if (hours) {
+    parts.push(`${hours} hour${hours === 1 ? "" : "s"}`);
   }
 
-  return `${formatHours(minutes)} hour${hours === 1 ? "" : "s"}`;
+  if (remainder || !hours) {
+    parts.push(`${remainder} minute${remainder === 1 ? "" : "s"}`);
+  }
+
+  return parts.join(" ");
 }
 
 function formatPercent(ratio) {
@@ -1166,11 +1163,7 @@ function formatHistoryRange(history) {
 }
 
 function formatAxisHours(hours) {
-  if (Number.isInteger(hours)) {
-    return `${hours}h`;
-  }
-
-  return `${hours.toFixed(1).replace(/\.0$/, "")}h`;
+  return formatDuration(hours * 60);
 }
 
 function buildYAxis(maxMinutes) {
@@ -1747,7 +1740,7 @@ function renderProjectOverview(projects, minuteIndex, theme) {
     name.className = "project-overview-legend-name";
     name.textContent = item.displayName;
     value.className = "project-overview-legend-value";
-    value.textContent = `${formatHours(item.totalMinutes)}h · ${formatPercent(item.ratio)}`;
+    value.textContent = `${formatDuration(item.totalMinutes)} · ${formatPercent(item.ratio)}`;
 
     legendMain.appendChild(swatch);
     legendMain.appendChild(name);
