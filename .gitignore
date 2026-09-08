@@ -1,0 +1,6 @@
+# Local and migrated time-tracking data may contain private information.
+files/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
